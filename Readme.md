@@ -1,6 +1,6 @@
 # resample
 --
-    import "."
+    import "github.com/zaf/resample"
 
 Package resample implements resampling of PCM-encoded audio. It uses the SoX
 Resampler library `libsoxr'.
