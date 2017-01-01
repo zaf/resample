@@ -55,7 +55,7 @@ input data, the input format and the quality setting.
 #### func (*Resampler) Close
 
 ```go
-func (r *Resampler) Close()
+func (r *Resampler) Close() (err error)
 ```
 Close clean-ups and frees memory. Should always be called when finished using
 the resampler.
@@ -63,7 +63,7 @@ the resampler.
 #### func (*Resampler) Reset
 
 ```go
-func (r *Resampler) Reset(writer io.Writer)
+func (r *Resampler) Reset(writer io.Writer) (err error)
 ```
 Reset permits reusing a Resampler rather than allocating a new one.
 

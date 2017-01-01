@@ -66,6 +66,9 @@ type Resampler struct {
 func New(writer io.Writer, inputRate, outputRate float64, channels, format, quality int) (*Resampler, error) {
 	var err error
 	var size int
+	if writer == nil {
+		return nil, errors.New("io.Writer is nil")
+	}
 	if inputRate <= 0 || outputRate <= 0 {
 		return nil, errors.New("Invalid input or output sampling rates")
 	}
@@ -110,20 +113,33 @@ func New(writer io.Writer, inputRate, outputRate float64, channels, format, qual
 }
 
 // Reset permits reusing a Resampler rather than allocating a new one.
-func (r *Resampler) Reset(writer io.Writer) {
+func (r *Resampler) Reset(writer io.Writer) (err error) {
+	if r.resampler == nil {
+		return errors.New("soxr resampler is nil")
+	}
 	r.destination = writer
 	C.soxr_clear(r.resampler)
+	return
 }
 
 // Close clean-ups and frees memory. Should always be called when finished using the resampler.
-func (r *Resampler) Close() {
+func (r *Resampler) Close() (err error) {
+	if r.resampler == nil {
+		return errors.New("soxr resampler is nil")
+	}
 	C.soxr_delete(r.resampler)
+	r.resampler = nil
+	return
 }
 
 // Write resamples PCM sound data. Writes len(p) bytes from p to the underlying data stream,
 // returns the number of bytes written from p (0 <= n <= len(p)) and any error encountered
 // that caused the write to stop early.
 func (r *Resampler) Write(p []byte) (i int, err error) {
+	if r.resampler == nil {
+		err = errors.New("soxr resampler is nil")
+		return
+	}
 	if len(p) == 0 {
 		return
 	}
@@ -147,6 +163,8 @@ func (r *Resampler) Write(p []byte) (i int, err error) {
 	soxErr = C.soxr_process(r.resampler, dataIn, C.size_t(framesIn), &read, dataOut, C.size_t(framesOut), &done)
 	if C.GoString(soxErr) != "" && C.GoString(soxErr) != "0" {
 		err = errors.New(C.GoString(soxErr))
+	} else if int(done) == 0 {
+		err = errors.New("Not enough input to generate output")
 	} else {
 		var werr error
 		i, werr = r.destination.Write(C.GoBytes(dataOut, C.int(int(done)*r.channels*r.frameSize)))

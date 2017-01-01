@@ -9,9 +9,113 @@
 package resample
 
 import (
+	"io"
 	"io/ioutil"
 	"testing"
 )
+
+var NewTest = []struct {
+	writer     io.Writer
+	inputRate  float64
+	outputRate float64
+	channels   int
+	format     int
+	quality    int
+	err        string
+}{
+	{writer: ioutil.Discard, inputRate: 8000.0, outputRate: 8000.0, channels: 2, format: I16, quality: MediumQ, err: ""},
+	{writer: ioutil.Discard, inputRate: 16000.0, outputRate: 8000.0, channels: 2, format: I16, quality: MediumQ, err: ""},
+	{writer: ioutil.Discard, inputRate: 16000.0, outputRate: 8000.0, channels: 2, format: I32, quality: MediumQ, err: ""},
+	{writer: ioutil.Discard, inputRate: 16000.0, outputRate: 8000.0, channels: 2, format: F32, quality: MediumQ, err: ""},
+	{writer: ioutil.Discard, inputRate: 16000.0, outputRate: 8000.0, channels: 2, format: F64, quality: MediumQ, err: ""},
+	{writer: ioutil.Discard, inputRate: 16000.0, outputRate: 8000.0, channels: 2, format: I16, quality: Quick, err: ""},
+	{writer: ioutil.Discard, inputRate: 16000.0, outputRate: 8000.0, channels: 2, format: I16, quality: LowQ, err: ""},
+	{writer: ioutil.Discard, inputRate: 16000.0, outputRate: 8000.0, channels: 2, format: I16, quality: HighQ, err: ""},
+	{writer: ioutil.Discard, inputRate: 16000.0, outputRate: 8000.0, channels: 2, format: I16, quality: VeryHighQ, err: ""},
+	{writer: nil, inputRate: 8000.0, outputRate: 8000.0, channels: 2, format: I16, quality: MediumQ, err: "io.Writer is nil"},
+	{writer: ioutil.Discard, inputRate: 16000.0, outputRate: 8000.0, channels: 0, format: I16, quality: MediumQ, err: "Invalid channels number"},
+	{writer: ioutil.Discard, inputRate: 16000.0, outputRate: 0.0, channels: 0, format: I16, quality: MediumQ, err: "Invalid input or output sampling rates"},
+	{writer: ioutil.Discard, inputRate: 0.0, outputRate: 8000.0, channels: 0, format: I16, quality: MediumQ, err: "Invalid input or output sampling rates"},
+	{writer: ioutil.Discard, inputRate: 16000.0, outputRate: 8000.0, channels: 2, format: 10, quality: MediumQ, err: "Invalid format setting"},
+	{writer: ioutil.Discard, inputRate: 16000.0, outputRate: 8000.0, channels: 2, format: I16, quality: 10, err: "Invalid quality setting"},
+}
+
+func TestNew(t *testing.T) {
+	for _, tc := range NewTest {
+		res, err := New(tc.writer, tc.inputRate, tc.outputRate, tc.channels, tc.format, tc.quality)
+		if err != nil && tc.err != err.Error() {
+			t.Fatalf("Expecting: %s got: %v", tc.err, err)
+		}
+		if err == nil && tc.err != "" {
+			t.Fatalf("No error for: %s", tc.err)
+		}
+		if res != nil {
+			res.Close()
+		}
+	}
+}
+
+var WriterTest = []struct {
+	data     []byte
+	expected int
+	err      string
+}{
+	{[]byte{}, 0, ""},
+	{[]byte{0x01}, 0, "Incomplete input frame data"},
+	{[]byte{0x01, 0x00, 0x7c, 0x7f, 0xd1, 0xd0, 0xd3, 0xd2, 0xdd, 0xdc, 0xdf, 0xde}, 12, ""},
+	{[]byte{0x01, 0x00, 0x7c, 0x7f, 0xd1, 0xd0, 0xd3, 0xd2, 0xdd, 0xdc, 0xdf, 0xde, 0xd9}, 12, "Fragmented last frame in input data"},
+}
+
+func TestWrite(t *testing.T) {
+	res, err := New(ioutil.Discard, 8000.0, 8000.0, 1, I16, MediumQ)
+	if err != nil {
+		t.Fatal("Failed to create a 1-1 Resampler: ", err)
+	}
+	for _, tc := range WriterTest {
+		i, err := res.Write(tc.data)
+		if err != nil && err.Error() != tc.err {
+			t.Errorf("Resampler 1-1 writer error: %s , expecting: %s", tc.err, err.Error())
+		}
+		if i != tc.expected {
+			t.Errorf("Resampler 1-1 writer returned: %d , actual: %d", tc.expected, i)
+		}
+	}
+	res.Close()
+}
+
+func TestClose(t *testing.T) {
+	res, err := New(ioutil.Discard, 16000.0, 8000.0, 1, I16, MediumQ)
+	if err != nil {
+		t.Fatal("Failed to create a Resampler: ", err)
+	}
+	err = res.Close()
+	if err != nil {
+		t.Fatal("Failed to Close the Resampler: ", err)
+	}
+	err = res.Close()
+	if err == nil {
+		t.Fatal("Running Close on a closed Resampler didn't return an error.")
+	}
+}
+
+func TestReset(t *testing.T) {
+	res, err := New(ioutil.Discard, 16000.0, 8000.0, 1, I16, MediumQ)
+	if err != nil {
+		t.Fatal("Failed to create a Resampler: ", err)
+	}
+	err = res.Reset(ioutil.Discard)
+	if err != nil {
+		t.Fatal("Failed to Reset the Resampler: ", err)
+	}
+	err = res.Close()
+	if err != nil {
+		t.Fatal("Failed to Close the Resampler: ", err)
+	}
+	err = res.Reset(ioutil.Discard)
+	if err == nil {
+		t.Fatal("Running Reset on a closed Resampler didn't return an error.")
+	}
+}
 
 // Benchmark Downsampling 16b 44.1k->16k
 func BenchmarkDownsample16b44k(b *testing.B) {
