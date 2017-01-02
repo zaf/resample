@@ -61,7 +61,7 @@ type Resampler struct {
 	destination io.Writer // output data
 }
 
-// New returns a pointer to a Resampler that implements a io.ReadCloser.
+// New returns a pointer to a Resampler that implements an io.WriteCloser.
 // It takes as parameters the destination data Writer, the input and output
 // sampling rates, the number of channels of the input data, the input format
 // and the quality setting.
