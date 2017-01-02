@@ -14,8 +14,8 @@ To install make sure you have libsoxr installed, then run:
 
 go get -u github.com/zaf/resample
 
-The package warps an io.Reader in a Resampler that resamples and writes all input data.
-Input should be RAW PCM encoded audio samples.
+The package warps an io.Reader in a Resampler that resamples and
+writes all input data. Input should be RAW PCM encoded audio samples.
 
 For usage details please see the code snippet in the cmd folder.
 */
@@ -51,7 +51,7 @@ const (
 	byteLen = 8
 )
 
-// Resampler implements an io.Writer interface.It resamples PCM sound data.
+// Resampler resamples PCM sound data.
 type Resampler struct {
 	resampler   C.soxr_t
 	inRate      float64   // input sample rate
@@ -61,8 +61,10 @@ type Resampler struct {
 	destination io.Writer // output data
 }
 
-// New returns a pointer to a Resampler. It takes as parameters the destination data Writer,
-// the input and output sampling rates, the number of channels of the input data, the input format and the quality setting.
+// New returns a pointer to a Resampler that implements a io.ReadCloser.
+// It takes as parameters the destination data Writer, the input and output
+// sampling rates, the number of channels of the input data, the input format
+// and the quality setting.
 func New(writer io.Writer, inputRate, outputRate float64, channels, format, quality int) (*Resampler, error) {
 	var err error
 	var size int
@@ -122,7 +124,8 @@ func (r *Resampler) Reset(writer io.Writer) (err error) {
 	return
 }
 
-// Close clean-ups and frees memory. Should always be called when finished using the resampler.
+// Close clean-ups and frees memory. Should always be called when
+// finished using the resampler.
 func (r *Resampler) Close() (err error) {
 	if r.resampler == nil {
 		return errors.New("soxr resampler is nil")
@@ -132,9 +135,10 @@ func (r *Resampler) Close() (err error) {
 	return
 }
 
-// Write resamples PCM sound data. Writes len(p) bytes from p to the underlying data stream,
-// returns the number of bytes written from p (0 <= n <= len(p)) and any error encountered
-// that caused the write to stop early.
+// Write resamples PCM sound data. Writes len(p) bytes from p to
+// the underlying data stream, returns the number of bytes written
+// from p (0 <= n <= len(p)) and any error encountered that caused
+// the write to stop early.
 func (r *Resampler) Write(p []byte) (i int, err error) {
 	if r.resampler == nil {
 		err = errors.New("soxr resampler is nil")
@@ -172,6 +176,12 @@ func (r *Resampler) Write(p []byte) (i int, err error) {
 			err = werr
 		}
 		i = int(float64(i) * (r.inRate / r.outRate))
+		if framesIn-int(read) < 2 {
+			// If we have read all input avoid to report short writes due
+			// to odd number of input frames or because of
+			// output frames missing due to downsampling.
+			i = len(p)
+		}
 	}
 	C.free(dataIn)
 	C.free(dataOut)

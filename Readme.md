@@ -41,16 +41,17 @@ type Resampler struct {
 }
 ```
 
-Resampler implements an io.Writer interface.It resamples PCM sound data.
+Resampler resamples PCM sound data.
 
 #### func  New
 
 ```go
 func New(writer io.Writer, inputRate, outputRate float64, channels, format, quality int) (*Resampler, error)
 ```
-New returns a pointer to a Resampler. It takes as parameters the destination
-data Writer, the input and output sampling rates, the number of channels of the
-input data, the input format and the quality setting.
+New returns a pointer to a Resampler that implements a io.ReadCloser. It takes
+as parameters the destination data Writer, the input and output sampling rates,
+the number of channels of the input data, the input format and the quality
+setting.
 
 #### func (*Resampler) Close
 
