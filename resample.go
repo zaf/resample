@@ -91,7 +91,7 @@ func New(writer io.Writer, inputRate, outputRate float64, channels, format, qual
 		return nil, errors.New("Invalid format setting")
 	}
 	var soxr C.soxr_t
-	var soxErr *C.char
+	var soxErr C.soxr_error_t
 	// Setup soxr and create a stream resampler
 	ioSpec := C.soxr_io_spec(C.soxr_datatype_t(format), C.soxr_datatype_t(format))
 	qSpec := C.soxr_quality_spec(C.ulong(quality), 0)
@@ -162,9 +162,9 @@ func (r *Resampler) Write(p []byte) (i int, err error) {
 	}
 	dataIn := C.CBytes(p)
 	dataOut := C.malloc(C.size_t(framesOut * r.channels * r.frameSize))
-	var soxErr *C.char
+	var soxErr C.soxr_error_t
 	var read, done C.size_t = 0, 0
-	soxErr = C.soxr_process(r.resampler, dataIn, C.size_t(framesIn), &read, dataOut, C.size_t(framesOut), &done)
+	soxErr = C.soxr_process(r.resampler, C.soxr_in_t(dataIn), C.size_t(framesIn), &read, C.soxr_out_t(dataOut), C.size_t(framesOut), &done)
 	if C.GoString(soxErr) != "" && C.GoString(soxErr) != "0" {
 		err = errors.New(C.GoString(soxErr))
 	} else if int(done) == 0 {
