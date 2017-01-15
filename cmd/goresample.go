@@ -6,6 +6,9 @@
 	at the top of the source tree.
 */
 
+// The program takes as input a WAV or RAW PCM sound file
+// and resamples it to the desired sampling rate.
+// The output is RAW PCM data.
 // Usage: goresample [flags] input_file output_file
 
 package main
@@ -20,6 +23,8 @@ import (
 
 	"github.com/zaf/resample"
 )
+
+const wavHeader = 44
 
 var (
 	format = flag.String("format", "i16", "PCM format")
@@ -68,16 +73,20 @@ func main() {
 	// Create a Reampler
 	res, err := resample.New(output, float64(*ir), float64(*or), *ch, frmt, resample.HighQ)
 	if err != nil {
+		output.Close()
+		os.Remove(outputFile)
 		log.Fatalln(err)
 	}
 	// Resample data and wrte to output file
 	if strings.ToLower(filepath.Ext(inputFile)) == ".wav" {
-		_, err = res.Write(input[44:]) // Skip WAV header
+		_, err = res.Write(input[wavHeader:]) // Skip WAV file header
 	} else {
 		_, err = res.Write(input)
 	}
-	if err != nil {
-		log.Println(err)
-	}
 	res.Close()
+	output.Close()
+	if err != nil {
+		os.Remove(outputFile)
+		log.Fatalln(err)
+	}
 }
