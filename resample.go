@@ -1,5 +1,5 @@
 /*
-	Copyright (C) 2016 - 2017, Lefteris Zafiris <zaf@fastmail.com>
+	Copyright (C) 2016 - 2018, Lefteris Zafiris <zaf@fastmail.com>
 
 	This program is free software, distributed under the terms of
 	the BSD 3-Clause License. See the LICENSE file
@@ -31,6 +31,7 @@ import "C"
 import (
 	"errors"
 	"io"
+	"runtime"
 	"unsafe"
 )
 
@@ -61,6 +62,12 @@ type Resampler struct {
 	destination io.Writer // output data
 }
 
+var threads int
+
+func init() {
+	threads = runtime.NumCPU()
+}
+
 // New returns a pointer to a Resampler that implements an io.WriteCloser.
 // It takes as parameters the destination data Writer, the input and output
 // sampling rates, the number of channels of the input data, the input format
@@ -77,7 +84,7 @@ func New(writer io.Writer, inputRate, outputRate float64, channels, format, qual
 	if channels == 0 {
 		return nil, errors.New("Invalid channels number")
 	}
-	if quality > 6 {
+	if quality < 0 || quality > 6 {
 		return nil, errors.New("Invalid quality setting")
 	}
 	switch format {
@@ -95,7 +102,8 @@ func New(writer io.Writer, inputRate, outputRate float64, channels, format, qual
 	// Setup soxr and create a stream resampler
 	ioSpec := C.soxr_io_spec(C.soxr_datatype_t(format), C.soxr_datatype_t(format))
 	qSpec := C.soxr_quality_spec(C.ulong(quality), 0)
-	soxr = C.soxr_create(C.double(inputRate), C.double(outputRate), C.uint(channels), &soxErr, &ioSpec, &qSpec, nil)
+	runtimeSpec := C.soxr_runtime_spec(C.uint(threads))
+	soxr = C.soxr_create(C.double(inputRate), C.double(outputRate), C.uint(channels), &soxErr, &ioSpec, &qSpec, &runtimeSpec)
 	if C.GoString(soxErr) != "" && C.GoString(soxErr) != "0" {
 		err = errors.New(C.GoString(soxErr))
 		C.free(unsafe.Pointer(soxErr))

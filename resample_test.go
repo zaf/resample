@@ -1,5 +1,5 @@
 /*
-	Copyright (C) 2016 - 2017, Lefteris Zafiris <zaf@fastmail.com>
+	Copyright (C) 2016 - 2018, Lefteris Zafiris <zaf@fastmail.com>
 
 	This program is free software, distributed under the terms of
 	the BSD 3-Clause License. See the LICENSE file
@@ -38,6 +38,7 @@ var NewTest = []struct {
 	{writer: ioutil.Discard, inputRate: 0.0, outputRate: 8000.0, channels: 0, format: I16, quality: MediumQ, err: "Invalid input or output sampling rates"},
 	{writer: ioutil.Discard, inputRate: 16000.0, outputRate: 8000.0, channels: 2, format: 10, quality: MediumQ, err: "Invalid format setting"},
 	{writer: ioutil.Discard, inputRate: 16000.0, outputRate: 8000.0, channels: 2, format: I16, quality: 10, err: "Invalid quality setting"},
+	{writer: ioutil.Discard, inputRate: 16000.0, outputRate: 8000.0, channels: 2, format: I16, quality: -10, err: "Invalid quality setting"},
 }
 
 func TestNew(t *testing.T) {
@@ -74,7 +75,7 @@ func TestWrite(t *testing.T) {
 	for _, tc := range WriterTest {
 		i, err := res.Write(tc.data)
 		if err != nil && err.Error() != tc.err {
-			t.Errorf("Resampler 1-1 writer error: %s , expecting: %s", tc.err, err.Error())
+			t.Errorf("Resampler 1-1 writer error: %s , expecting: %s", err.Error(), tc.err)
 		}
 		if i != tc.expected {
 			t.Errorf("Resampler 1-1 writer returned: %d , actual: %d", tc.expected, i)
@@ -91,6 +92,10 @@ func TestClose(t *testing.T) {
 	err = res.Close()
 	if err != nil {
 		t.Fatal("Failed to Close the Resampler: ", err)
+	}
+	_, err = res.Write(WriterTest[2].data)
+	if err == nil {
+		t.Fatal("Running Write on a closed Resampler didn't return an error.")
 	}
 	err = res.Close()
 	if err == nil {
@@ -117,191 +122,48 @@ func TestReset(t *testing.T) {
 	}
 }
 
-// Benchmark Downsampling 16b 44.1k->16k
-func BenchmarkDownsample16b44k(b *testing.B) {
-	rawData, err := ioutil.ReadFile("testing/piano-44.1k-16-2.wav")
-	if err != nil {
-		b.Fatalf("Failed to read test data: %s\n", err)
-	}
-	b.SetBytes(int64(len(rawData[44:])))
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		res, err := New(ioutil.Discard, 44100.0, 16000.0, 2, I16, MediumQ)
-		if err != nil {
-			b.Fatalf("Failed to create Writer: %s\n", err)
-		}
-		_, err = res.Write(rawData[44:]) // Skip wav header
-		res.Close()
-		if err != nil {
-			b.Fatalf("Encoding failed: %s\n", err)
-		}
-	}
+// Benchmarking data
+var BenchData = []struct {
+	name     string
+	file     string
+	inRate   float64
+	outRate  float64
+	channels int
+	format   int
+	quality  int
+}{
+	{"16bit 2 ch 44,1->16 Medium", "testing/piano-44.1k-16-2.wav", 44100.0, 16000.0, 2, I16, MediumQ},
+	{"16bit 2 ch 16->8    Medium", "testing/piano-16k-16-2.wav", 16000.0, 8000.0, 2, I16, MediumQ},
+	{"32fl  2 ch 44.1->8  Medium", "testing/organ44.1k-32f-2.wav", 44100.0, 8000.0, 2, F32, MediumQ},
+	{"16bit 2 ch 44.1->48 Medium", "testing/piano-44.1k-16-2.wav", 44100.0, 48000.0, 2, I16, MediumQ},
+	{"16bit 2 ch 48->44.1 Medium", "testing/piano-48k-16-2.wav", 48000.0, 44100.0, 2, I16, MediumQ},
+	{"16bit 1 ch 16->8     Quick", "testing/piano-16k-16-1.wav", 16000.0, 8000.0, 1, I16, Quick},
+	{"16bit 1 ch 16->8       Low", "testing/piano-16k-16-1.wav", 16000.0, 8000.0, 1, I16, LowQ},
+	{"16bit 1 ch 16->8    Medium", "testing/piano-16k-16-1.wav", 16000.0, 8000.0, 1, I16, MediumQ},
+	{"16bit 1 ch 16->8      High", "testing/piano-16k-16-1.wav", 16000.0, 8000.0, 1, I16, HighQ},
+	{"16bit 1 ch 16->8  VeryHigh", "testing/piano-16k-16-1.wav", 16000.0, 8000.0, 1, I16, VeryHighQ},
 }
 
-// Benchmark Downsampling 16b 16k->8k
-func BenchmarkDownsample16b16k(b *testing.B) {
-	rawData, err := ioutil.ReadFile("testing/piano-16k-16-1.wav")
-	if err != nil {
-		b.Fatalf("Failed to read test data: %s\n", err)
-	}
-	b.SetBytes(int64(len(rawData[44:])))
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		res, err := New(ioutil.Discard, 16000.0, 8000.0, 1, I16, MediumQ)
-		if err != nil {
-			b.Fatalf("Failed to create Writer: %s\n", err)
-		}
-		_, err = res.Write(rawData[44:])
-		res.Close()
-		if err != nil {
-			b.Fatalf("Encoding failed: %s\n", err)
-		}
-	}
-}
-
-// Benchmark Downsampling 32b 44k->8k
-func BenchmarkDownsample23b8k(b *testing.B) {
-	rawData, err := ioutil.ReadFile("testing/organ44.1k-32f-2.wav")
-	if err != nil {
-		b.Fatalf("Failed to read test data: %s\n", err)
-	}
-	b.SetBytes(int64(len(rawData[44:])))
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		res, err := New(ioutil.Discard, 44100.0, 8000.0, 1, F32, MediumQ)
-		if err != nil {
-			b.Fatalf("Failed to create Writer: %s\n", err)
-		}
-		_, err = res.Write(rawData[44:])
-		res.Close()
-		if err != nil {
-			b.Fatalf("Encoding failed: %s\n", err)
-		}
-	}
-}
-
-// Benchmark Upsampling 44.1k->48k
-func BenchmarkUpsample16b44k(b *testing.B) {
-	rawData, err := ioutil.ReadFile("testing/piano-44.1k-16-2.wav")
-	if err != nil {
-		b.Fatalf("Failed to read test data: %s\n", err)
-	}
-	b.SetBytes(int64(len(rawData[44:])))
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		res, err := New(ioutil.Discard, 44100.0, 48000.0, 2, I16, MediumQ)
-		if err != nil {
-			b.Fatalf("Failed to create Writer: %s\n", err)
-		}
-		_, err = res.Write(rawData[44:])
-		res.Close()
-		if err != nil {
-			b.Fatalf("Encoding failed: %s\n", err)
-		}
-	}
-}
-
-// Benchmark Downsampling Quick
-func BenchmarkQuick(b *testing.B) {
-	rawData, err := ioutil.ReadFile("testing/piano-16k-16-1.wav")
-	if err != nil {
-		b.Fatalf("Failed to read test data: %s\n", err)
-	}
-	b.SetBytes(int64(len(rawData[44:])))
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		res, err := New(ioutil.Discard, 16000.0, 8000.0, 1, I16, Quick)
-		if err != nil {
-			b.Fatalf("Failed to create Writer: %s\n", err)
-		}
-		_, err = res.Write(rawData[44:])
-		res.Close()
-		if err != nil {
-			b.Fatalf("Encoding failed: %s\n", err)
-		}
-	}
-}
-
-// Benchmark Downsampling LowQ
-func BenchmarkLowQ(b *testing.B) {
-	rawData, err := ioutil.ReadFile("testing/piano-16k-16-1.wav")
-	if err != nil {
-		b.Fatalf("Failed to read test data: %s\n", err)
-	}
-	b.SetBytes(int64(len(rawData[44:])))
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		res, err := New(ioutil.Discard, 16000.0, 8000.0, 1, I16, LowQ)
-		if err != nil {
-			b.Fatalf("Failed to create Writer: %s\n", err)
-		}
-		_, err = res.Write(rawData[44:])
-		res.Close()
-		if err != nil {
-			b.Fatalf("Encoding failed: %s\n", err)
-		}
-	}
-}
-
-// Benchmark Downsampling MediumQ
-func BenchmarkMediumQ(b *testing.B) {
-	rawData, err := ioutil.ReadFile("testing/piano-16k-16-1.wav")
-	if err != nil {
-		b.Fatalf("Failed to read test data: %s\n", err)
-	}
-	b.SetBytes(int64(len(rawData[44:])))
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		res, err := New(ioutil.Discard, 16000.0, 8000.0, 1, I16, MediumQ)
-		if err != nil {
-			b.Fatalf("Failed to create Writer: %s\n", err)
-		}
-		_, err = res.Write(rawData[44:])
-		res.Close()
-		if err != nil {
-			b.Fatalf("Encoding failed: %s\n", err)
-		}
-	}
-}
-
-// Benchmark Downsampling HighQ
-func BenchmarkHighQ(b *testing.B) {
-	rawData, err := ioutil.ReadFile("testing/piano-16k-16-1.wav")
-	if err != nil {
-		b.Fatalf("Failed to read test data: %s\n", err)
-	}
-	b.SetBytes(int64(len(rawData[44:])))
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		res, err := New(ioutil.Discard, 16000.0, 8000.0, 1, I16, HighQ)
-		if err != nil {
-			b.Fatalf("Failed to create Writer: %s\n", err)
-		}
-		_, err = res.Write(rawData[44:])
-		res.Close()
-		if err != nil {
-			b.Fatalf("Encoding failed: %s\n", err)
-		}
-	}
-}
-
-// Benchmark Downsampling VeryHighQ
-func BenchmarkVeryHighQ(b *testing.B) {
-	rawData, err := ioutil.ReadFile("testing/piano-16k-16-1.wav")
-	if err != nil {
-		b.Fatalf("Failed to read test data: %s\n", err)
-	}
-	b.SetBytes(int64(len(rawData[44:])))
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		res, err := New(ioutil.Discard, 16000.0, 8000.0, 1, I16, VeryHighQ)
-		if err != nil {
-			b.Fatalf("Failed to create Writer: %s\n", err)
-		}
-		_, err = res.Write(rawData[44:])
-		res.Close()
-		if err != nil {
-			b.Fatalf("Encoding failed: %s\n", err)
-		}
+func BenchmarkResampling(b *testing.B) {
+	for _, bd := range BenchData {
+		b.Run(bd.name, func(b *testing.B) {
+			rawData, err := ioutil.ReadFile(bd.file)
+			if err != nil {
+				b.Fatalf("Failed to read test data: %s\n", err)
+			}
+			b.SetBytes(int64(len(rawData[44:])))
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				res, err := New(ioutil.Discard, bd.inRate, bd.outRate, bd.channels, bd.format, bd.quality)
+				if err != nil {
+					b.Fatalf("Failed to create Writer: %s\n", err)
+				}
+				_, err = res.Write(rawData[44:])
+				res.Close()
+				if err != nil {
+					b.Fatalf("Encoding failed: %s\n", err)
+				}
+			}
+		})
 	}
 }
