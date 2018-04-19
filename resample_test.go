@@ -151,18 +151,22 @@ func BenchmarkResampling(b *testing.B) {
 			if err != nil {
 				b.Fatalf("Failed to read test data: %s\n", err)
 			}
+			res, err := New(ioutil.Discard, bd.inRate, bd.outRate, bd.channels, bd.format, bd.quality)
+			if err != nil {
+				b.Fatalf("Failed to create Writer: %s\n", err)
+			}
 			b.SetBytes(int64(len(rawData[44:])))
 			b.ResetTimer()
 			for i := 0; i < b.N; i++ {
-				res, err := New(ioutil.Discard, bd.inRate, bd.outRate, bd.channels, bd.format, bd.quality)
-				if err != nil {
-					b.Fatalf("Failed to create Writer: %s\n", err)
-				}
 				_, err = res.Write(rawData[44:])
-				res.Close()
 				if err != nil {
 					b.Fatalf("Encoding failed: %s\n", err)
 				}
+			}
+			b.StopTimer()
+			res.Close()
+			if err != nil {
+				b.Fatalf("Failed to close the resampler: %s\n", err)
 			}
 		})
 	}
