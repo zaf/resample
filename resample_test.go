@@ -63,11 +63,11 @@ var WriterTest = []struct {
 }{
 	{[]byte{}, 0, ""},
 	{[]byte{0x01}, 0, "Incomplete input frame data"},
-	{[]byte{0x01, 0x00, 0x7c, 0x7f, 0xd1, 0xd0, 0xd3, 0xd2, 0xdd, 0xdc, 0xdf, 0xde}, 12, ""},
-	{[]byte{0x01, 0x00, 0x7c, 0x7f, 0xd1, 0xd0, 0xd3, 0xd2, 0xdd, 0xdc, 0xdf, 0xde, 0xd9}, 13, "Fragmented last frame in input data"},
+	{[]byte{0x01, 0x00, 0x7c, 0x7f, 0xd1, 0xd0, 0xd3, 0xd2, 0xdd, 0xdc, 0xdf, 0xde, 0x01, 0x00, 0x7c, 0x7f, 0xd1, 0xd0, 0xd3, 0xd2, 0xdd, 0xdc, 0xdf, 0xde}, 24, ""},
+	{[]byte{0x01, 0x00, 0x7c, 0x7f, 0xd1, 0xd0, 0xd3, 0xd2, 0xdd, 0xdc, 0xdf, 0xde, 0x01, 0x00, 0x7c, 0x7f, 0xd1, 0xd0, 0xd3, 0xd2, 0xdd, 0xdc, 0xdf, 0xde, 0xd9}, 25, "Fragmented last frame in input data"},
 }
 
-func TestWrite(t *testing.T) {
+func TestWriter1(t *testing.T) {
 	res, err := New(ioutil.Discard, 8000.0, 8000.0, 1, I16, MediumQ)
 	if err != nil {
 		t.Fatal("Failed to create a 1-1 Resampler: ", err)
@@ -78,7 +78,24 @@ func TestWrite(t *testing.T) {
 			t.Errorf("Resampler 1-1 writer error: %s , expecting: %s", err.Error(), tc.err)
 		}
 		if i != tc.expected {
-			t.Errorf("Resampler 1-1 writer returned: %d , actual: %d", tc.expected, i)
+			t.Errorf("Resampler 1-1 writer returned: %d , expecting: %d", i, tc.expected)
+		}
+	}
+	res.Close()
+}
+
+func TestWriter2(t *testing.T) {
+	res, err := New(ioutil.Discard, 8000.0, 4000.0, 2, I16, MediumQ)
+	if err != nil {
+		t.Fatal("Failed to create a 1-2 Resampler: ", err)
+	}
+	for _, tc := range WriterTest {
+		i, err := res.Write(tc.data)
+		if err != nil && err.Error() != tc.err {
+			t.Errorf("Resampler 1-2 writer error: %s , expecting: %s", err.Error(), tc.err)
+		}
+		if i != tc.expected {
+			t.Errorf("Resampler 1-2 writer returned: %d , expecting: %d", i, tc.expected)
 		}
 	}
 	res.Close()

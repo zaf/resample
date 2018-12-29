@@ -77,16 +77,19 @@ func main() {
 		os.Remove(outputFile)
 		log.Fatalln(err)
 	}
-	// Resample data and wrte to output file
+	// Skip WAV file header
 	if strings.ToLower(filepath.Ext(inputFile)) == ".wav" {
-		_, err = res.Write(input[wavHeader:]) // Skip WAV file header
-	} else {
-		_, err = res.Write(input)
+		input = input[wavHeader:]
 	}
+	// Resample data and wrte to output file
+	i, err := res.Write(input)
 	res.Close()
 	output.Close()
 	if err != nil {
 		os.Remove(outputFile)
 		log.Fatalln(err)
+	}
+	if i < len(input) {
+		log.Fatalln("Short write")
 	}
 }
