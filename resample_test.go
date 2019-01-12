@@ -77,6 +77,9 @@ func TestWriter1(t *testing.T) {
 		if err != nil && err.Error() != tc.err {
 			t.Errorf("Resampler 1-1 writer error: %s , expecting: %s", err.Error(), tc.err)
 		}
+		if err != nil {
+			continue
+		}
 		if i != tc.expected {
 			t.Errorf("Resampler 1-1 writer returned: %d , expecting: %d", i, tc.expected)
 		}
@@ -93,6 +96,9 @@ func TestWriter2(t *testing.T) {
 		i, err := res.Write(tc.data)
 		if err != nil && err.Error() != tc.err {
 			t.Errorf("Resampler 1-2 writer error: %s , expecting: %s", err.Error(), tc.err)
+		}
+		if err != nil {
+			continue
 		}
 		if i != tc.expected {
 			t.Errorf("Resampler 1-2 writer returned: %d , expecting: %d", i, tc.expected)

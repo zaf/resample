@@ -162,6 +162,7 @@ func (r *Resampler) Write(p []byte) (i int, err error) {
 	}
 	if len(p)%(r.frameSize/r.channels) != 0 {
 		err = errors.New("Fragmented last frame in input data")
+		return
 	}
 	framesOut := int(float64(framesIn) * (r.outRate / r.inRate))
 	if framesOut == 0 {
