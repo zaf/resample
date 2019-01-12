@@ -160,7 +160,7 @@ func (r *Resampler) Write(p []byte) (i int, err error) {
 		err = errors.New("Incomplete input frame data")
 		return
 	}
-	if len(p)%(r.frameSize/r.channels) != 0 {
+	if len(p)%(r.frameSize*r.channels) != 0 {
 		err = errors.New("Fragmented last frame in input data")
 		return
 	}
