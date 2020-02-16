@@ -172,33 +172,23 @@ func (r *Resampler) Write(p []byte) (i int, err error) {
 	dataIn := C.CBytes(p)
 	dataOut := C.malloc(C.size_t(framesOut*r.channels*r.frameSize + 4))
 	var soxErr C.soxr_error_t
-	var read1, read2, done1, done2 C.size_t = 0, 0, 0, 0
-	var w1, w2 int
-	soxErr = C.soxr_process(r.resampler, C.soxr_in_t(dataIn), C.size_t(framesIn), &read1, C.soxr_out_t(dataOut), C.size_t(framesOut), &done1)
-	if C.GoString(soxErr) != "" && C.GoString(soxErr) != "0" {
-		err = errors.New(C.GoString(soxErr))
-		goto cleanup
-	}
-	w1, err = r.destination.Write(C.GoBytes(dataOut, C.int(int(done1)*r.channels*r.frameSize)))
-	if err != nil {
-		goto cleanup
-	}
-	// Consume any data left in the resampling filter
-	soxErr = C.soxr_process(r.resampler, C.soxr_in_t(nil), C.size_t(0), &read2, C.soxr_out_t(dataOut), C.size_t(framesOut), &done2)
-	if C.GoString(soxErr) != "" && C.GoString(soxErr) != "0" {
-		err = errors.New(C.GoString(soxErr))
-		goto cleanup
-	}
-	w2, err = r.destination.Write(C.GoBytes(dataOut, C.int(int(done2)*r.channels*r.frameSize)))
-	if err == nil {
-		i = int(float64(w1+w2) * (r.inRate / r.outRate))
-		// If we have read all input and flushed all output, avoid to report short writes due
-		// to output frames missing because of downsampling or other odd reasons.
-		if framesIn == int(read1+read2) && framesOut == int(done1+done2) {
-			i = len(p)
+	var totalRead, totalDone int
+	for totalDone < framesOut {
+		var read, done C.size_t = 0, 0
+		var w int
+		soxErr = C.soxr_process(r.resampler, C.soxr_in_t(dataIn), C.size_t(framesIn), &read, C.soxr_out_t(dataOut), C.size_t(framesOut), &done)
+		if C.GoString(soxErr) != "" && C.GoString(soxErr) != "0" {
+			err = errors.New(C.GoString(soxErr))
+			break
 		}
+		w, err = r.destination.Write(C.GoBytes(dataOut, C.int(int(done)*r.channels*r.frameSize)))
+		if err != nil {
+			break
+		}
+		totalRead += int(read)
+		totalDone += int(done)
+		i += int(float64(w) * (r.inRate / r.outRate))
 	}
-cleanup:
 	C.free(dataIn)
 	C.free(dataOut)
 	C.free(unsafe.Pointer(soxErr))
