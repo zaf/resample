@@ -155,13 +155,13 @@ func (r *Resampler) Write(p []byte) (i int, err error) {
 	if len(p) == 0 {
 		return
 	}
+	if fragment := len(p) % (r.frameSize * r.channels); fragment != 0 {
+		// Drop fragmented frames from the end of input data
+		p = p[:len(p)-fragment]
+	}
 	framesIn := len(p) / r.frameSize / r.channels
 	if framesIn == 0 {
 		err = errors.New("Incomplete input frame data")
-		return
-	}
-	if len(p)%(r.frameSize*r.channels) != 0 {
-		err = errors.New("Fragmented last frame in input data")
 		return
 	}
 	framesOut := int(float64(framesIn) * (r.outRate / r.inRate))
@@ -172,7 +172,7 @@ func (r *Resampler) Write(p []byte) (i int, err error) {
 	dataIn := C.CBytes(p)
 	dataOut := C.malloc(C.size_t(framesOut*r.channels*r.frameSize + 4))
 	var soxErr C.soxr_error_t
-	var totalRead, totalDone int
+	var totalDone int
 	for totalDone < framesOut {
 		var read, done C.size_t = 0, 0
 		var w int
@@ -185,7 +185,6 @@ func (r *Resampler) Write(p []byte) (i int, err error) {
 		if err != nil {
 			break
 		}
-		totalRead += int(read)
 		totalDone += int(done)
 		i += int(float64(w) * (r.inRate / r.outRate))
 	}
