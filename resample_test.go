@@ -185,6 +185,7 @@ func BenchmarkResampling(b *testing.B) {
 				if err != nil {
 					b.Fatalf("Encoding failed: %s\n", err)
 				}
+				res.Reset(ioutil.Discard)
 			}
 			b.StopTimer()
 			res.Close()
