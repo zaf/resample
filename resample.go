@@ -170,24 +170,21 @@ func (r *Resampler) Write(p []byte) (i int, err error) {
 		return
 	}
 	dataIn := C.CBytes(p)
-	dataOut := C.malloc(C.size_t(framesOut*r.channels*r.frameSize + 4))
+	dataOut := C.malloc(C.size_t(framesOut * r.channels * r.frameSize))
 	var soxErr C.soxr_error_t
-	var totalDone int
-	for totalDone < framesOut {
-		var read, done C.size_t = 0, 0
-		var w int
+	var read, done C.size_t = 0, 0
+	var written int
+	for int(done) < framesOut {
 		soxErr = C.soxr_process(r.resampler, C.soxr_in_t(dataIn), C.size_t(framesIn), &read, C.soxr_out_t(dataOut), C.size_t(framesOut), &done)
 		if C.GoString(soxErr) != "" && C.GoString(soxErr) != "0" {
 			err = errors.New(C.GoString(soxErr))
-			break
+			goto cleanup
 		}
-		w, err = r.destination.Write(C.GoBytes(dataOut, C.int(int(done)*r.channels*r.frameSize)))
-		if err != nil {
-			break
-		}
-		totalDone += int(done)
-		i += int(float64(w) * (r.inRate / r.outRate))
 	}
+	written, err = r.destination.Write(C.GoBytes(dataOut, C.int(int(done)*r.channels*r.frameSize)))
+	i = int(float64(written) * (r.inRate / r.outRate))
+
+cleanup:
 	C.free(dataIn)
 	C.free(dataOut)
 	C.free(unsafe.Pointer(soxErr))
