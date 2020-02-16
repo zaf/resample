@@ -185,7 +185,7 @@ func (r *Resampler) Write(p []byte) (i int, err error) {
 	i = int(float64(written) * (r.inRate / r.outRate))
 	// If we have read all input and flushed all output, avoid to report short writes due
 	// to output frames missing because of downsampling or other odd reasons.
-	if err != nil && framesIn == int(read) && framesOut == int(done) {
+	if err == nil && framesIn == int(read) && framesOut == int(done) {
 		i = len(p)
 	}
 
