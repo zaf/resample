@@ -56,15 +56,16 @@ func TestNew(t *testing.T) {
 	}
 }
 
-var WriterTest = []struct {
+var WriterTest1 = []struct {
 	data     []byte
 	expected int
 	err      string
 }{
 	{[]byte{}, 0, ""},
 	{[]byte{0x01}, 0, "Incomplete input frame data"},
+	{[]byte{0x01, 0x00}, 2, ""},
 	{[]byte{0x01, 0x00, 0x7c, 0x7f, 0xd1, 0xd0, 0xd3, 0xd2, 0xdd, 0xdc, 0xdf, 0xde, 0x01, 0x00, 0x7c, 0x7f, 0xd1, 0xd0, 0xd3, 0xd2, 0xdd, 0xdc, 0xdf, 0xde}, 24, ""},
-	{[]byte{0x01, 0x00, 0x7c, 0x7f, 0xd1, 0xd0, 0xd3, 0xd2, 0xdd, 0xdc, 0xdf, 0xde, 0x01, 0x00, 0x7c, 0x7f, 0xd1, 0xd0, 0xd3, 0xd2, 0xdd, 0xdc, 0xdf, 0xde, 0xd9}, 25, "Fragmented last frame in input data"},
+	{[]byte{0x01, 0x00, 0x7c, 0x7f, 0xd1, 0xd0, 0xd3, 0xd2, 0xdd, 0xdc, 0xdf, 0xde, 0x01, 0x00, 0x7c, 0x7f, 0xd1, 0xd0, 0xd3, 0xd2, 0xdd, 0xdc, 0xdf, 0xde, 0xd9}, 24, ""},
 }
 
 func TestWriter1(t *testing.T) {
@@ -72,7 +73,7 @@ func TestWriter1(t *testing.T) {
 	if err != nil {
 		t.Fatal("Failed to create a 1-1 Resampler: ", err)
 	}
-	for _, tc := range WriterTest {
+	for _, tc := range WriterTest1 {
 		i, err := res.Write(tc.data)
 		if err != nil && err.Error() != tc.err {
 			t.Errorf("Resampler 1-1 writer error: %s , expecting: %s", err.Error(), tc.err)
@@ -87,12 +88,24 @@ func TestWriter1(t *testing.T) {
 	res.Close()
 }
 
+var WriterTest2 = []struct {
+	data     []byte
+	expected int
+	err      string
+}{
+	{[]byte{}, 0, ""},
+	{[]byte{0x01}, 0, "Incomplete input frame data"},
+	{[]byte{0x01, 0x00, 0x7c, 0x7f}, 0, "Not enough input to generate output"},
+	{[]byte{0x01, 0x00, 0x7c, 0x7f, 0xd1, 0xd0, 0xd3, 0xd2, 0xdd, 0xdc, 0xdf, 0xde, 0x01, 0x00, 0x7c, 0x7f, 0xd1, 0xd0, 0xd3, 0xd2, 0xdd, 0xdc, 0xdf, 0xde}, 24, ""},
+	{[]byte{0x01, 0x00, 0x7c, 0x7f, 0xd1, 0xd0, 0xd3, 0xd2, 0xdd, 0xdc, 0xdf, 0xde, 0x01, 0x00, 0x7c, 0x7f, 0xd1, 0xd0, 0xd3, 0xd2, 0xdd, 0xdc, 0xdf, 0xde, 0xd9}, 24, ""},
+}
+
 func TestWriter2(t *testing.T) {
 	res, err := New(ioutil.Discard, 8000.0, 4000.0, 2, I16, MediumQ)
 	if err != nil {
 		t.Fatal("Failed to create a 1-2 Resampler: ", err)
 	}
-	for _, tc := range WriterTest {
+	for _, tc := range WriterTest2 {
 		i, err := res.Write(tc.data)
 		if err != nil && err.Error() != tc.err {
 			t.Errorf("Resampler 1-2 writer error: %s , expecting: %s", err.Error(), tc.err)
@@ -116,7 +129,7 @@ func TestClose(t *testing.T) {
 	if err != nil {
 		t.Fatal("Failed to Close the Resampler: ", err)
 	}
-	_, err = res.Write(WriterTest[2].data)
+	_, err = res.Write(WriterTest1[3].data)
 	if err == nil {
 		t.Fatal("Running Write on a closed Resampler didn't return an error.")
 	}
@@ -157,7 +170,7 @@ var BenchData = []struct {
 }{
 	{"16bit 2 ch 44,1->16 Medium", "testing/piano-44.1k-16-2.wav", 44100.0, 16000.0, 2, I16, MediumQ},
 	{"16bit 2 ch 16->8    Medium", "testing/piano-16k-16-2.wav", 16000.0, 8000.0, 2, I16, MediumQ},
-	{"32fl  2 ch 44.1->8  Medium", "testing/organ44.1k-32f-2.wav", 44100.0, 8000.0, 2, F32, MediumQ},
+	{"32fl  2 ch 44.1->8  Medium", "testing/piano-44.1k-32f-2.wav", 44100.0, 8000.0, 2, F32, MediumQ},
 	{"16bit 2 ch 44.1->48 Medium", "testing/piano-44.1k-16-2.wav", 44100.0, 48000.0, 2, I16, MediumQ},
 	{"16bit 2 ch 48->44.1 Medium", "testing/piano-48k-16-2.wav", 48000.0, 44100.0, 2, I16, MediumQ},
 	{"16bit 1 ch 16->8     Quick", "testing/piano-16k-16-1.wav", 16000.0, 8000.0, 1, I16, Quick},
@@ -186,6 +199,7 @@ func BenchmarkResampling(b *testing.B) {
 				if err != nil {
 					b.Fatalf("Encoding failed: %s\n", err)
 				}
+				res.Reset(ioutil.Discard)
 			}
 		})
 	}
