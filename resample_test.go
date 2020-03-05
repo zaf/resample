@@ -75,6 +75,7 @@ func TestWriter1(t *testing.T) {
 	}
 	for _, tc := range WriterTest1 {
 		i, err := res.Write(tc.data)
+		res.Reset(ioutil.Discard)
 		if err != nil && err.Error() != tc.err {
 			t.Errorf("Resampler 1-1 writer error: %s , expecting: %s", err.Error(), tc.err)
 		}
@@ -107,6 +108,7 @@ func TestWriter2(t *testing.T) {
 	}
 	for _, tc := range WriterTest2 {
 		i, err := res.Write(tc.data)
+		res.Reset(ioutil.Discard)
 		if err != nil && err.Error() != tc.err {
 			t.Errorf("Resampler 1-2 writer error: %s , expecting: %s", err.Error(), tc.err)
 		}
@@ -188,19 +190,19 @@ func BenchmarkResampling(b *testing.B) {
 				b.Fatalf("Failed to read test data: %s\n", err)
 			}
 			b.SetBytes(int64(len(rawData[44:])))
+			res, err := New(ioutil.Discard, bd.inRate, bd.outRate, bd.channels, bd.format, bd.quality)
+			if err != nil {
+				b.Fatalf("Failed to create Writer: %s\n", err)
+			}
 			b.ResetTimer()
 			for i := 0; i < b.N; i++ {
-				res, err := New(ioutil.Discard, bd.inRate, bd.outRate, bd.channels, bd.format, bd.quality)
-				if err != nil {
-					b.Fatalf("Failed to create Writer: %s\n", err)
-				}
 				_, err = res.Write(rawData[44:])
-				res.Close()
 				if err != nil {
 					b.Fatalf("Encoding failed: %s\n", err)
 				}
 				res.Reset(ioutil.Discard)
 			}
+			res.Close()
 		})
 	}
 }

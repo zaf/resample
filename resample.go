@@ -180,6 +180,17 @@ func (r *Resampler) Write(p []byte) (i int, err error) {
 			err = errors.New(C.GoString(soxErr))
 			goto cleanup
 		}
+		if int(read) == framesIn && int(done) < framesOut {
+			// Indicate end of input to the resampler
+			var d C.size_t = 0
+			soxErr = C.soxr_process(r.resampler, C.soxr_in_t(nil), C.size_t(0), nil, C.soxr_out_t(dataOut), C.size_t(framesOut), &d)
+			if C.GoString(soxErr) != "" && C.GoString(soxErr) != "0" {
+				err = errors.New(C.GoString(soxErr))
+				goto cleanup
+			}
+			done += d
+			break
+		}
 	}
 	written, err = r.destination.Write(C.GoBytes(dataOut, C.int(int(done)*r.channels*r.frameSize)))
 	i = int(float64(written) * (r.inRate / r.outRate))
