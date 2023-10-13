@@ -71,8 +71,10 @@ Reset permits reusing a Resampler rather than allocating a new one.
 #### func (*Resampler) Write
 
 ```go
-func (r *Resampler) Write(p []byte) (i int, err error)
+func (r *Resampler) Write(p []byte, stream bool) (i int, err error)
 ```
 Write resamples PCM sound data. Writes len(p) bytes from p to the underlying
 data stream, returns the number of bytes written from p (0 <= n <= len(p)) and
 any error encountered that caused the write to stop early.
+
+If `stream` is false, then no further data should be processed by this resampler until it is reset.
