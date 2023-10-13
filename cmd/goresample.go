@@ -82,7 +82,7 @@ func main() {
 		input = input[wavHeader:]
 	}
 	// Resample data and wrte to output file
-	i, err := res.Write(input)
+	i, err := res.Write(input, false)
 	res.Close()
 	output.Close()
 	if err != nil {

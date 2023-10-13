@@ -74,7 +74,7 @@ func TestWriter1(t *testing.T) {
 		t.Fatal("Failed to create a 1-1 Resampler: ", err)
 	}
 	for _, tc := range WriterTest1 {
-		i, err := res.Write(tc.data)
+		i, err := res.Write(tc.data, false)
 		res.Reset(ioutil.Discard)
 		if err != nil && err.Error() != tc.err {
 			t.Errorf("Resampler 1-1 writer error: %s , expecting: %s", err.Error(), tc.err)
@@ -107,7 +107,7 @@ func TestWriter2(t *testing.T) {
 		t.Fatal("Failed to create a 1-2 Resampler: ", err)
 	}
 	for _, tc := range WriterTest2 {
-		i, err := res.Write(tc.data)
+		i, err := res.Write(tc.data, false)
 		res.Reset(ioutil.Discard)
 		if err != nil && err.Error() != tc.err {
 			t.Errorf("Resampler 1-2 writer error: %s , expecting: %s", err.Error(), tc.err)
@@ -131,7 +131,7 @@ func TestClose(t *testing.T) {
 	if err != nil {
 		t.Fatal("Failed to Close the Resampler: ", err)
 	}
-	_, err = res.Write(WriterTest1[3].data)
+	_, err = res.Write(WriterTest1[3].data, false)
 	if err == nil {
 		t.Fatal("Running Write on a closed Resampler didn't return an error.")
 	}
@@ -196,7 +196,7 @@ func BenchmarkResampling(b *testing.B) {
 			}
 			b.ResetTimer()
 			for i := 0; i < b.N; i++ {
-				_, err = res.Write(rawData[44:])
+				_, err = res.Write(rawData[44:], false)
 				if err != nil {
 					b.Fatalf("Encoding failed: %s\n", err)
 				}

@@ -147,7 +147,7 @@ func (r *Resampler) Close() (err error) {
 // the underlying data stream, returns the number of bytes written
 // from p (0 <= n <= len(p)) and any error encountered that caused
 // the write to stop early.
-func (r *Resampler) Write(p []byte) (i int, err error) {
+func (r *Resampler) Write(p []byte, stream bool) (i int, err error) {
 	if r.resampler == nil {
 		err = errors.New("soxr resampler is nil")
 		return
@@ -180,7 +180,7 @@ func (r *Resampler) Write(p []byte) (i int, err error) {
 			err = errors.New(C.GoString(soxErr))
 			goto cleanup
 		}
-		if int(read) == framesIn && int(done) < framesOut {
+		if int(read) == framesIn && int(done) < framesOut && !stream {
 			// Indicate end of input to the resampler
 			var d C.size_t = 0
 			soxErr = C.soxr_process(r.resampler, C.soxr_in_t(nil), C.size_t(0), nil, C.soxr_out_t(dataOut), C.size_t(framesOut), &d)
@@ -189,6 +189,7 @@ func (r *Resampler) Write(p []byte) (i int, err error) {
 				goto cleanup
 			}
 			done += d
+
 			break
 		}
 	}
