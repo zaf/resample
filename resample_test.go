@@ -10,7 +10,7 @@ package resample
 
 import (
 	"io"
-	"io/ioutil"
+	"os"
 	"testing"
 )
 
@@ -23,22 +23,22 @@ var NewTest = []struct {
 	quality    int
 	err        string
 }{
-	{writer: ioutil.Discard, inputRate: 8000.0, outputRate: 8000.0, channels: 2, format: I16, quality: MediumQ, err: ""},
-	{writer: ioutil.Discard, inputRate: 16000.0, outputRate: 8000.0, channels: 2, format: I16, quality: MediumQ, err: ""},
-	{writer: ioutil.Discard, inputRate: 16000.0, outputRate: 8000.0, channels: 2, format: I32, quality: MediumQ, err: ""},
-	{writer: ioutil.Discard, inputRate: 16000.0, outputRate: 8000.0, channels: 2, format: F32, quality: MediumQ, err: ""},
-	{writer: ioutil.Discard, inputRate: 16000.0, outputRate: 8000.0, channels: 2, format: F64, quality: MediumQ, err: ""},
-	{writer: ioutil.Discard, inputRate: 16000.0, outputRate: 8000.0, channels: 2, format: I16, quality: Quick, err: ""},
-	{writer: ioutil.Discard, inputRate: 16000.0, outputRate: 8000.0, channels: 2, format: I16, quality: LowQ, err: ""},
-	{writer: ioutil.Discard, inputRate: 16000.0, outputRate: 8000.0, channels: 2, format: I16, quality: HighQ, err: ""},
-	{writer: ioutil.Discard, inputRate: 16000.0, outputRate: 8000.0, channels: 2, format: I16, quality: VeryHighQ, err: ""},
+	{writer: io.Discard, inputRate: 8000.0, outputRate: 8000.0, channels: 2, format: I16, quality: MediumQ, err: ""},
+	{writer: io.Discard, inputRate: 16000.0, outputRate: 8000.0, channels: 2, format: I16, quality: MediumQ, err: ""},
+	{writer: io.Discard, inputRate: 16000.0, outputRate: 8000.0, channels: 2, format: I32, quality: MediumQ, err: ""},
+	{writer: io.Discard, inputRate: 16000.0, outputRate: 8000.0, channels: 2, format: F32, quality: MediumQ, err: ""},
+	{writer: io.Discard, inputRate: 16000.0, outputRate: 8000.0, channels: 2, format: F64, quality: MediumQ, err: ""},
+	{writer: io.Discard, inputRate: 16000.0, outputRate: 8000.0, channels: 2, format: I16, quality: Quick, err: ""},
+	{writer: io.Discard, inputRate: 16000.0, outputRate: 8000.0, channels: 2, format: I16, quality: LowQ, err: ""},
+	{writer: io.Discard, inputRate: 16000.0, outputRate: 8000.0, channels: 2, format: I16, quality: HighQ, err: ""},
+	{writer: io.Discard, inputRate: 16000.0, outputRate: 8000.0, channels: 2, format: I16, quality: VeryHighQ, err: ""},
 	{writer: nil, inputRate: 8000.0, outputRate: 8000.0, channels: 2, format: I16, quality: MediumQ, err: "io.Writer is nil"},
-	{writer: ioutil.Discard, inputRate: 16000.0, outputRate: 8000.0, channels: 0, format: I16, quality: MediumQ, err: "Invalid channels number"},
-	{writer: ioutil.Discard, inputRate: 16000.0, outputRate: 0.0, channels: 0, format: I16, quality: MediumQ, err: "Invalid input or output sampling rates"},
-	{writer: ioutil.Discard, inputRate: 0.0, outputRate: 8000.0, channels: 0, format: I16, quality: MediumQ, err: "Invalid input or output sampling rates"},
-	{writer: ioutil.Discard, inputRate: 16000.0, outputRate: 8000.0, channels: 2, format: 10, quality: MediumQ, err: "Invalid format setting"},
-	{writer: ioutil.Discard, inputRate: 16000.0, outputRate: 8000.0, channels: 2, format: I16, quality: 10, err: "Invalid quality setting"},
-	{writer: ioutil.Discard, inputRate: 16000.0, outputRate: 8000.0, channels: 2, format: I16, quality: -10, err: "Invalid quality setting"},
+	{writer: io.Discard, inputRate: 16000.0, outputRate: 8000.0, channels: 0, format: I16, quality: MediumQ, err: "Invalid channels number"},
+	{writer: io.Discard, inputRate: 16000.0, outputRate: 0.0, channels: 0, format: I16, quality: MediumQ, err: "Invalid input or output sampling rates"},
+	{writer: io.Discard, inputRate: 0.0, outputRate: 8000.0, channels: 0, format: I16, quality: MediumQ, err: "Invalid input or output sampling rates"},
+	{writer: io.Discard, inputRate: 16000.0, outputRate: 8000.0, channels: 2, format: 10, quality: MediumQ, err: "Invalid format setting"},
+	{writer: io.Discard, inputRate: 16000.0, outputRate: 8000.0, channels: 2, format: I16, quality: 10, err: "Invalid quality setting"},
+	{writer: io.Discard, inputRate: 16000.0, outputRate: 8000.0, channels: 2, format: I16, quality: -10, err: "Invalid quality setting"},
 }
 
 func TestNew(t *testing.T) {
@@ -69,13 +69,13 @@ var WriterTest1 = []struct {
 }
 
 func TestWriter1(t *testing.T) {
-	res, err := New(ioutil.Discard, 8000.0, 8000.0, 1, I16, MediumQ)
+	res, err := New(io.Discard, 8000.0, 8000.0, 1, I16, MediumQ)
 	if err != nil {
 		t.Fatal("Failed to create a 1-1 Resampler: ", err)
 	}
 	for _, tc := range WriterTest1 {
 		i, err := res.Write(tc.data)
-		res.Reset(ioutil.Discard)
+		res.Reset(io.Discard)
 		if err != nil && err.Error() != tc.err {
 			t.Errorf("Resampler 1-1 writer error: %s , expecting: %s", err.Error(), tc.err)
 		}
@@ -102,13 +102,13 @@ var WriterTest2 = []struct {
 }
 
 func TestWriter2(t *testing.T) {
-	res, err := New(ioutil.Discard, 8000.0, 4000.0, 2, I16, MediumQ)
+	res, err := New(io.Discard, 8000.0, 4000.0, 2, I16, MediumQ)
 	if err != nil {
 		t.Fatal("Failed to create a 1-2 Resampler: ", err)
 	}
 	for _, tc := range WriterTest2 {
 		i, err := res.Write(tc.data)
-		res.Reset(ioutil.Discard)
+		res.Reset(io.Discard)
 		if err != nil && err.Error() != tc.err {
 			t.Errorf("Resampler 1-2 writer error: %s , expecting: %s", err.Error(), tc.err)
 		}
@@ -123,7 +123,7 @@ func TestWriter2(t *testing.T) {
 }
 
 func TestClose(t *testing.T) {
-	res, err := New(ioutil.Discard, 16000.0, 8000.0, 1, I16, MediumQ)
+	res, err := New(io.Discard, 16000.0, 8000.0, 1, I16, MediumQ)
 	if err != nil {
 		t.Fatal("Failed to create a Resampler: ", err)
 	}
@@ -142,11 +142,11 @@ func TestClose(t *testing.T) {
 }
 
 func TestReset(t *testing.T) {
-	res, err := New(ioutil.Discard, 16000.0, 8000.0, 1, I16, MediumQ)
+	res, err := New(io.Discard, 16000.0, 8000.0, 1, I16, MediumQ)
 	if err != nil {
 		t.Fatal("Failed to create a Resampler: ", err)
 	}
-	err = res.Reset(ioutil.Discard)
+	err = res.Reset(io.Discard)
 	if err != nil {
 		t.Fatal("Failed to Reset the Resampler: ", err)
 	}
@@ -154,7 +154,7 @@ func TestReset(t *testing.T) {
 	if err != nil {
 		t.Fatal("Failed to Close the Resampler: ", err)
 	}
-	err = res.Reset(ioutil.Discard)
+	err = res.Reset(io.Discard)
 	if err == nil {
 		t.Fatal("Running Reset on a closed Resampler didn't return an error.")
 	}
@@ -185,12 +185,12 @@ var BenchData = []struct {
 func BenchmarkResampling(b *testing.B) {
 	for _, bd := range BenchData {
 		b.Run(bd.name, func(b *testing.B) {
-			rawData, err := ioutil.ReadFile(bd.file)
+			rawData, err := os.ReadFile(bd.file)
 			if err != nil {
 				b.Fatalf("Failed to read test data: %s\n", err)
 			}
 			b.SetBytes(int64(len(rawData[44:])))
-			res, err := New(ioutil.Discard, bd.inRate, bd.outRate, bd.channels, bd.format, bd.quality)
+			res, err := New(io.Discard, bd.inRate, bd.outRate, bd.channels, bd.format, bd.quality)
 			if err != nil {
 				b.Fatalf("Failed to create Writer: %s\n", err)
 			}
@@ -200,7 +200,7 @@ func BenchmarkResampling(b *testing.B) {
 				if err != nil {
 					b.Fatalf("Encoding failed: %s\n", err)
 				}
-				res.Reset(ioutil.Discard)
+				res.Reset(io.Discard)
 			}
 			res.Close()
 		})
