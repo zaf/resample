@@ -15,7 +15,6 @@ package main
 
 import (
 	"flag"
-	"io/ioutil"
 	"log"
 	"os"
 	"path/filepath"
@@ -62,7 +61,7 @@ func main() {
 	var err error
 	var input []byte
 
-	input, err = ioutil.ReadFile(inputFile)
+	input, err = os.ReadFile(inputFile)
 	if err != nil {
 		log.Fatalln(err)
 	}
