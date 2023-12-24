@@ -5,35 +5,14 @@
 Package resample implements resampling of PCM-encoded audio. It uses the SoX
 Resampler library `libsoxr'.
 
-To install make sure you have libsoxr installed, then run:
+To install make sure you have libsoxr and pkg-config installed, then run:
 
-go get -u github.com/zaf/resample
+go install github.com/zaf/resample@latest
 
 The package warps an io.Reader in a Resampler that resamples and writes all
 input data. Input should be RAW PCM encoded audio samples.
 
 For usage details please see the code snippet in the cmd folder.
-
-## install libsoxr
-centos
-```
-yum install pkg-config
-
-wget https://github.com/chirlu/soxr/archive/refs/heads/master.zip
-unzip master.zip
-cd soxr-master
-cmake ./
-make && make install
-```
-
-ubuntu
-```
-sudo apt-get install -y pkg-config libsoxr-dev
-```
-
-```
-brew install pkg-config libsoxr
-```
 
 ## Usage
 
