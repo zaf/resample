@@ -14,6 +14,27 @@ input data. Input should be RAW PCM encoded audio samples.
 
 For usage details please see the code snippet in the cmd folder.
 
+## install libsoxr
+centos
+```
+yum install pkg-config
+
+wget https://github.com/chirlu/soxr/archive/refs/heads/master.zip
+unzip master.zip
+cd soxr-master
+cmake ./
+make && make install
+```
+
+ubuntu
+```
+sudo apt-get install -y pkg-config libsoxr-dev
+```
+
+```
+brew install pkg-config libsoxr
+```
+
 ## Usage
 
 ```go

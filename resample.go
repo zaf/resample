@@ -22,10 +22,10 @@ For usage details please see the code snippet in the cmd folder.
 package resample
 
 /*
-#cgo LDFLAGS: -lsoxr
-
+// Link soxr using pkg-config.
+#cgo pkg-config: soxr
 #include <stdlib.h>
-#include "soxr.h"
+#include <soxr.h>
 */
 import "C"
 import (
