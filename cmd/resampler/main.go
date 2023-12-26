@@ -10,6 +10,8 @@
 // and resamples it to the desired sampling rate.
 // The output is RAW PCM data.
 // Usage: goresample [flags] input_file output_file
+//
+// Example: go run main.go -ir 16000 -or 8000 ../../testing/piano-16k-16-2.wav 8k.raw
 
 package main
 
@@ -61,6 +63,7 @@ func main() {
 	var err error
 	var input []byte
 
+	// Read all out input data (WAV or RAW PCM)
 	input, err = os.ReadFile(inputFile)
 	if err != nil {
 		log.Fatalln(err)
@@ -69,8 +72,9 @@ func main() {
 	if err != nil {
 		log.Fatalln(err)
 	}
-	// Create a Reampler
-	res, err := resample.New(output, float64(*ir), float64(*or), *ch, frmt, resample.HighQ)
+	defer output.Close()
+	// Create a non streaming Resampler
+	res, err := resample.New(output, float64(*ir), float64(*or), *ch, frmt, resample.HighQ, false)
 	if err != nil {
 		output.Close()
 		os.Remove(outputFile)
@@ -80,15 +84,15 @@ func main() {
 	if strings.ToLower(filepath.Ext(inputFile)) == ".wav" {
 		input = input[wavHeader:]
 	}
-	// Resample data and wrte to output file
+	// When using a non streaming Resampler, the full input data must be passed once. After that we cant write any more data.
 	i, err := res.Write(input)
-	res.Close()
-	output.Close()
 	if err != nil {
 		os.Remove(outputFile)
 		log.Fatalln(err)
 	}
 	if i < len(input) {
-		log.Fatalln("Short write")
+		log.Println("Short write")
 	}
+	res.Close()
+	output.Close()
 }

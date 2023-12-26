@@ -46,32 +46,32 @@ Resampler resamples PCM sound data.
 #### func  New
 
 ```go
-func New(writer io.Writer, inputRate, outputRate float64, channels, format, quality int) (*Resampler, error)
+func New(writer io.Writer, inputRate, outputRate float64, channels, format, quality int, stream bool) (*Resampler, error)
 ```
 New returns a pointer to a Resampler that implements an io.WriteCloser. It takes
 as parameters the destination data Writer, the input and output sampling rates,
-the number of channels of the input data, the input format and the quality
-setting.
+the number of channels of the input data, the input format, the quality setting 
+and the imput mode (streaming or not).
 
 #### func (*Resampler) Close
 
 ```go
-func (r *Resampler) Close() (err error)
+func (r *Resampler) Close() (error)
 ```
-Close clean-ups and frees memory. Should always be called when finished using
+Close flushes, clean-ups and frees memory. Should always be called when finished using
 the resampler.
 
 #### func (*Resampler) Reset
 
 ```go
-func (r *Resampler) Reset(writer io.Writer) (err error)
+func (r *Resampler) Reset(writer io.Writer) (error)
 ```
 Reset permits reusing a Resampler rather than allocating a new one.
 
 #### func (*Resampler) Write
 
 ```go
-func (r *Resampler) Write(p []byte) (i int, err error)
+func (r *Resampler) Write(p []byte) (int, error)
 ```
 Write resamples PCM sound data. Writes len(p) bytes from p to the underlying
 data stream, returns the number of bytes written from p (0 <= n <= len(p)) and
