@@ -73,8 +73,8 @@ func main() {
 		log.Fatalln(err)
 	}
 	defer output.Close()
-	// Create a non streaming Resampler
-	res, err := resample.New(output, float64(*ir), float64(*or), *ch, frmt, resample.HighQ, false)
+	// Create a Resampler
+	res, err := resample.New(output, float64(*ir), float64(*or), *ch, frmt, resample.HighQ)
 	if err != nil {
 		output.Close()
 		os.Remove(outputFile)
@@ -84,14 +84,11 @@ func main() {
 	if strings.ToLower(filepath.Ext(inputFile)) == ".wav" {
 		input = input[wavHeader:]
 	}
-	// When using a non streaming Resampler, the full input data must be passed once. After that we cant write any more data.
-	i, err := res.Write(input)
+	// Resample PCM data
+	_, err = res.Write(input)
 	if err != nil {
 		os.Remove(outputFile)
 		log.Fatalln(err)
-	}
-	if i < len(input) {
-		log.Println("Short write")
 	}
 	res.Close()
 	output.Close()

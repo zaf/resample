@@ -17,7 +17,7 @@ go install github.com/zaf/resample@latest
 The package warps an io.Reader in a Resampler that resamples and
 writes all input data. Input should be RAW PCM encoded audio samples.
 
-For usage details please see the code snippet in the cmd folder.
+For usage details please see the code snippets in the cmd folder.
 */
 package resample
 
@@ -59,7 +59,6 @@ type Resampler struct {
 	outRate     float64   // output sample rate
 	channels    int       // number of input channels
 	frameSize   int       // frame size in bytes
-	stream      bool      // stream mode
 	destination io.Writer // output data
 }
 
@@ -71,9 +70,9 @@ func init() {
 
 // New returns a pointer to a Resampler that implements an io.WriteCloser.
 // It takes as parameters the destination data Writer, the input and output
-// sampling rates, the number of channels of the input data, the input format,
-// the quality setting and the imput mode (streaming or not).
-func New(writer io.Writer, inputRate, outputRate float64, channels, format, quality int, stream bool) (*Resampler, error) {
+// sampling rates, the number of channels of the input data, the input format
+// and the the quality setting.
+func New(writer io.Writer, inputRate, outputRate float64, channels, format, quality int) (*Resampler, error) {
 	var err error
 	var size int
 	if writer == nil {
@@ -117,7 +116,6 @@ func New(writer io.Writer, inputRate, outputRate float64, channels, format, qual
 		outRate:     outputRate,
 		channels:    channels,
 		frameSize:   size,
-		stream:      stream,
 		destination: writer,
 	}
 	C.free(unsafe.Pointer(soxErr))
@@ -130,9 +128,7 @@ func (r *Resampler) Reset(writer io.Writer) error {
 	if r.resampler == nil {
 		return errors.New("soxr resampler is nil")
 	}
-	if r.stream {
-		err = r.flush()
-	}
+	err = r.flush()
 	r.destination = writer
 	C.soxr_clear(r.resampler)
 	return err
@@ -145,9 +141,7 @@ func (r *Resampler) Close() error {
 	if r.resampler == nil {
 		return errors.New("soxr resampler is nil")
 	}
-	if r.stream {
-		err = r.flush()
-	}
+	err = r.flush()
 	C.soxr_delete(r.resampler)
 	r.resampler = nil
 	return err
@@ -166,10 +160,6 @@ func (r *Resampler) Write(p []byte) (int, error) {
 	if len(p) == 0 {
 		return i, nil
 	}
-	if fragment := len(p) % (r.frameSize * r.channels); fragment != 0 {
-		// Drop fragmented frames from the end of input data
-		p = p[:len(p)-fragment]
-	}
 	framesIn := len(p) / r.frameSize / r.channels
 	if framesIn == 0 {
 		return i, errors.New("Incomplete input frame data")
@@ -183,21 +173,16 @@ func (r *Resampler) Write(p []byte) (int, error) {
 	var soxErr C.soxr_error_t
 	var read, done C.size_t = 0, 0
 	var written int
-	// By passing ^framesIn we notify end of input and tell soxr to process all input data. After that we cant pass any more input.
-	if !r.stream {
-		framesIn = ^framesIn
-	}
 	soxErr = C.soxr_process(r.resampler, C.soxr_in_t(dataIn), C.size_t(framesIn), &read, C.soxr_out_t(dataOut), C.size_t(framesOut), &done)
 	if C.GoString(soxErr) != "" && C.GoString(soxErr) != "0" {
 		err = errors.New(C.GoString(soxErr))
 		goto cleanup
 	}
 	written, err = r.destination.Write(C.GoBytes(dataOut, C.int(int(done)*r.channels*r.frameSize)))
-	//fmt.Println("written:", written, "done:", done, "read:", read, "framesIn:", framesIn, "framesOut:", framesOut)
 	i = int(float64(written) * (r.inRate / r.outRate))
 	// If we have read all input and flushed all output, avoid to report short writes due
 	// to output frames missing because of downsampling or other odd reasons.
-	if err == nil && ((framesIn == int(read) && framesOut == int(done)) || r.stream) {
+	if err == nil && (framesIn == int(read) && framesOut == int(done)) {
 		i = len(p)
 	}
 
@@ -208,7 +193,7 @@ cleanup:
 	return i, err
 }
 
-// flush any pending output from the resampler when in stream mode. Aftter that no more input can be passed.
+// flush any pending output from the resampler. Aftter that no more input can be passed.
 func (r *Resampler) flush() error {
 	var err error
 	var done C.size_t
@@ -222,7 +207,6 @@ func (r *Resampler) flush() error {
 		goto cleanup
 	}
 	_, err = r.destination.Write(C.GoBytes(dataOut, C.int(int(done)*r.channels*r.frameSize)))
-	//fmt.Println("flushed:", done)
 cleanup:
 	C.free(dataOut)
 	C.free(unsafe.Pointer(soxErr))

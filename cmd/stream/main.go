@@ -72,8 +72,8 @@ func main() {
 	if err != nil {
 		log.Fatalln(err)
 	}
-	// Create a streaming Resampler
-	res, err := resample.New(output, float64(*ir), float64(*or), *ch, frmt, resample.HighQ, true)
+	// Create a Resampler
+	res, err := resample.New(output, float64(*ir), float64(*or), *ch, frmt, resample.HighQ)
 	if err != nil {
 		output.Close()
 		os.Remove(outputFile)
@@ -85,7 +85,6 @@ func main() {
 	}
 
 	// Read input data in chunks and pass them to the Resampler
-	var read, written int
 	buf := make([]byte, 1024*1024)
 	for {
 		r, err := input.Read(buf)
@@ -95,19 +94,14 @@ func main() {
 			}
 			break
 		}
-		read += r
-		w, err := res.Write(buf[:r])
+		_, err = res.Write(buf[:r])
 		if err != nil {
 			break
 		}
-		written += w
 	}
 	if err != nil {
 		os.Remove(outputFile)
 		log.Fatalln(err)
-	}
-	if written < read {
-		log.Println("Short write")
 	}
 	// Close the Resampler and the output file. Clsoing the Resampler will flush any remaining data to the output file.
 	// If the Resampler is not closed before the output file, any remaining data will be lost.

@@ -12,7 +12,7 @@ go install github.com/zaf/resample@latest
 The package warps an io.Reader in a Resampler that resamples and writes all
 input data. Input should be RAW PCM encoded audio samples.
 
-For usage details please see the code snippet in the cmd folder.
+For usage details please see the code snippets in the cmd folder.
 
 ## Usage
 
@@ -46,12 +46,11 @@ Resampler resamples PCM sound data.
 #### func  New
 
 ```go
-func New(writer io.Writer, inputRate, outputRate float64, channels, format, quality int, stream bool) (*Resampler, error)
+func New(writer io.Writer, inputRate, outputRate float64, channels, format, quality int) (*Resampler, error)
 ```
 New returns a pointer to a Resampler that implements an io.WriteCloser. It takes
 as parameters the destination data Writer, the input and output sampling rates,
-the number of channels of the input data, the input format, the quality setting 
-and the imput mode (streaming or not).
+the number of channels of the input data, the input format and the quality setting.
 
 #### func (*Resampler) Close
 
