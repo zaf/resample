@@ -1,5 +1,5 @@
 /*
-	Copyright (C) 2016 - 2017, Lefteris Zafiris <zaf@fastmail.com>
+	Copyright (C) 2016 - 2023, Lefteris Zafiris <zaf@fastmail.com>
 
 	This program is free software, distributed under the terms of
 	the BSD 3-Clause License. See the LICENSE file
@@ -84,12 +84,14 @@ func main() {
 	if strings.ToLower(filepath.Ext(inputFile)) == ".wav" {
 		input = input[wavHeader:]
 	}
-	// Resample PCM data
+	// Resample input PCM data in one go
 	_, err = res.Write(input)
+	// Close the Resampler and the output file. Clsoing the Resampler will flush any remaining data to the output file.
+	// If the Resampler is not closed before the output file, any remaining data will be lost.
+	res.Close()
+	output.Close()
 	if err != nil {
 		os.Remove(outputFile)
 		log.Fatalln(err)
 	}
-	res.Close()
-	output.Close()
 }

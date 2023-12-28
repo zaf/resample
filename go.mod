@@ -1,3 +1,3 @@
 module github.com/zaf/resample
 
-go 1.17
+go 1.20

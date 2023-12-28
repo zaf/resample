@@ -1,5 +1,5 @@
 /*
-	Copyright (C) 2016 - 2018, Lefteris Zafiris <zaf@fastmail.com>
+	Copyright (C) 2016 - 2023, Lefteris Zafiris <zaf@fastmail.com>
 
 	This program is free software, distributed under the terms of
 	the BSD 3-Clause License. See the LICENSE file
@@ -34,12 +34,12 @@ var NewTest = []struct {
 	{writer: io.Discard, inputRate: 16000.0, outputRate: 8000.0, channels: 2, format: I16, quality: HighQ, err: ""},
 	{writer: io.Discard, inputRate: 16000.0, outputRate: 8000.0, channels: 2, format: I16, quality: VeryHighQ, err: ""},
 	{writer: nil, inputRate: 8000.0, outputRate: 8000.0, channels: 2, format: I16, quality: MediumQ, err: "io.Writer is nil"},
-	{writer: io.Discard, inputRate: 16000.0, outputRate: 8000.0, channels: 0, format: I16, quality: MediumQ, err: "Invalid channels number"},
-	{writer: io.Discard, inputRate: 16000.0, outputRate: 0.0, channels: 0, format: I16, quality: MediumQ, err: "Invalid input or output sampling rates"},
-	{writer: io.Discard, inputRate: 0.0, outputRate: 8000.0, channels: 0, format: I16, quality: MediumQ, err: "Invalid input or output sampling rates"},
-	{writer: io.Discard, inputRate: 16000.0, outputRate: 8000.0, channels: 2, format: 10, quality: MediumQ, err: "Invalid format setting"},
-	{writer: io.Discard, inputRate: 16000.0, outputRate: 8000.0, channels: 2, format: I16, quality: 10, err: "Invalid quality setting"},
-	{writer: io.Discard, inputRate: 16000.0, outputRate: 8000.0, channels: 2, format: I16, quality: -10, err: "Invalid quality setting"},
+	{writer: io.Discard, inputRate: 16000.0, outputRate: 8000.0, channels: 0, format: I16, quality: MediumQ, err: "invalid channels number"},
+	{writer: io.Discard, inputRate: 16000.0, outputRate: 0.0, channels: 0, format: I16, quality: MediumQ, err: "invalid input or output sampling rates"},
+	{writer: io.Discard, inputRate: 0.0, outputRate: 8000.0, channels: 0, format: I16, quality: MediumQ, err: "invalid input or output sampling rates"},
+	{writer: io.Discard, inputRate: 16000.0, outputRate: 8000.0, channels: 2, format: 10, quality: MediumQ, err: "invalid format setting"},
+	{writer: io.Discard, inputRate: 16000.0, outputRate: 8000.0, channels: 2, format: I16, quality: 10, err: "invalid quality setting"},
+	{writer: io.Discard, inputRate: 16000.0, outputRate: 8000.0, channels: 2, format: I16, quality: -10, err: "invalid quality setting"},
 }
 
 func TestNew(t *testing.T) {
@@ -74,7 +74,7 @@ var WriteTest = []struct {
 		err      string
 	}{
 		{[]byte{}, 0, ""},
-		{[]byte{0x01}, 0, "Incomplete input frame data"},
+		{[]byte{0x01}, 0, "incomplete input frame data"},
 		{[]byte{0x01, 0x00}, 2, ""},
 		{[]byte{0x01, 0x00, 0x7c, 0x7f, 0xd1, 0xd0, 0xd3, 0xd2, 0xdd, 0xdc, 0xdf, 0xde, 0x01, 0x00, 0x7c, 0x7f, 0xd1, 0xd0, 0xd3, 0xd2, 0xdd, 0xdc, 0xdf, 0xde}, 24, ""},
 		{[]byte{0x01, 0x00, 0x7c, 0x7f, 0xd1, 0xd0, 0xd3, 0xd2, 0xdd, 0xdc, 0xdf, 0xde, 0x01, 0x00, 0x7c, 0x7f, 0xd1, 0xd0, 0xd3, 0xd2, 0xdd, 0xdc, 0xdf, 0xde, 0xd9}, 25, ""},
@@ -86,7 +86,7 @@ var WriteTest = []struct {
 		err      string
 	}{
 		{[]byte{}, 0, ""},
-		{[]byte{0x01}, 0, "Incomplete input frame data"},
+		{[]byte{0x01}, 0, "incomplete input frame data"},
 	}},
 
 	{"2-1 Resampler mono", 8000.0, 4000.0, 2, []struct {
@@ -95,8 +95,8 @@ var WriteTest = []struct {
 		err      string
 	}{
 		{[]byte{}, 0, ""},
-		{[]byte{0x01}, 0, "Incomplete input frame data"},
-		{[]byte{0x01, 0x00, 0x7c, 0x7f}, 0, "Not enough input to generate output"},
+		{[]byte{0x01}, 0, "incomplete input frame data"},
+		{[]byte{0x01, 0x00, 0x7c, 0x7f}, 0, "not enough input to generate output"},
 	}},
 }
 
@@ -134,8 +134,8 @@ var FileTest = []struct {
 	quality    int
 }{
 	{"testing/piano-16k-16-1.wav", 16000.0, 8000.0, 1, I16, MediumQ},
-	{"testing/piano-16k-16-2.wav", 16000.0, 8000.0, 2, I16, MediumQ},
-	//{"testing/piano-44.1k-16-2.wav", 441000.0, 22050.0, 2, I16, MediumQ},
+	{"testing/piano-16k-16-2.wav", 16000.0, 4000.0, 2, I16, MediumQ},
+	//{"testing/piano-44.1k-16-2.wav", 44100.0, 22050.0, 2, I16, MediumQ},
 	//{"testing/piano-44.1k-32f-2.wav", 44100.0, 48000.0, 2, F32, MediumQ},
 	//{"testing/piano-48k-16-2.wav", 48000, 44100.0, 2, I16, MediumQ},
 }
@@ -162,7 +162,7 @@ func TestFile(t *testing.T) {
 		inSize := float64(len(input[44:]))
 		outSize := float64(out.Len()) * td.inputRate / td.outputRate
 		if inSize != outSize {
-			t.Error("Resampled file size mismatch, in:", inSize, "out:", outSize)
+			t.Error("Resampled file size mismatch, in:", int(inSize), "out:", int(outSize))
 		}
 	}
 }

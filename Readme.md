@@ -58,7 +58,7 @@ the number of channels of the input data, the input format and the quality setti
 func (r *Resampler) Close() (error)
 ```
 Close flushes, clean-ups and frees memory. Should always be called when finished using
-the resampler.
+the resampler, and before we can use its output.
 
 #### func (*Resampler) Reset
 

@@ -17,6 +17,7 @@ package main
 
 import (
 	"flag"
+	"io"
 	"log"
 	"os"
 	"path/filepath"
@@ -84,28 +85,14 @@ func main() {
 		input.Seek(wavHeader, 0)
 	}
 
-	// Read input data in chunks and pass them to the Resampler
-	buf := make([]byte, 1024*1024)
-	for {
-		r, err := input.Read(buf)
-		if err != nil {
-			if err.Error() == "EOF" {
-				err = nil
-			}
-			break
-		}
-		_, err = res.Write(buf[:r])
-		if err != nil {
-			break
-		}
-	}
-	if err != nil {
-		os.Remove(outputFile)
-		log.Fatalln(err)
-	}
+	// Read input and pass it to the Resampler in chunks
+	_, err = io.Copy(res, input)
 	// Close the Resampler and the output file. Clsoing the Resampler will flush any remaining data to the output file.
 	// If the Resampler is not closed before the output file, any remaining data will be lost.
 	res.Close()
 	output.Close()
-
+	if err != nil {
+		os.Remove(outputFile)
+		log.Fatalln(err)
+	}
 }
