@@ -1,5 +1,5 @@
 /*
-	Copyright (C) 2016 - 2017, Lefteris Zafiris <zaf@fastmail.com>
+	Copyright (C) 2016 - 2024, Lefteris Zafiris <zaf@fastmail.com>
 
 	This program is free software, distributed under the terms of
 	the BSD 3-Clause License. See the LICENSE file
@@ -10,11 +10,14 @@
 // and resamples it to the desired sampling rate.
 // The output is RAW PCM data.
 // Usage: goresample [flags] input_file output_file
+//
+// Example: go run main.go -ir 16000 -or 8000 ../../testing/piano-16k-16-2.wav 8k.raw
 
 package main
 
 import (
 	"flag"
+	"io"
 	"log"
 	"os"
 	"path/filepath"
@@ -59,36 +62,37 @@ func main() {
 	inputFile := flag.Arg(0)
 	outputFile := flag.Arg(1)
 	var err error
-	var input []byte
 
-	input, err = os.ReadFile(inputFile)
+	// Open input file (WAV or RAW PCM)
+	input, err := os.Open(inputFile)
 	if err != nil {
 		log.Fatalln(err)
 	}
+	defer input.Close()
 	output, err := os.Create(outputFile)
 	if err != nil {
 		log.Fatalln(err)
 	}
-	// Create a Reampler
+	// Create a Resampler
 	res, err := resample.New(output, float64(*ir), float64(*or), *ch, frmt, resample.HighQ)
 	if err != nil {
 		output.Close()
 		os.Remove(outputFile)
 		log.Fatalln(err)
 	}
-	// Skip WAV file header
+	// Skip WAV file header in order to pass only the PCM data to the Resampler
 	if strings.ToLower(filepath.Ext(inputFile)) == ".wav" {
-		input = input[wavHeader:]
+		input.Seek(wavHeader, 0)
 	}
-	// Resample data and wrte to output file
-	i, err := res.Write(input)
+
+	// Read input and pass it to the Resampler in chunks
+	_, err = io.Copy(res, input)
+	// Close the Resampler and the output file. Clsoing the Resampler will flush any remaining data to the output file.
+	// If the Resampler is not closed before the output file, any remaining data will be lost.
 	res.Close()
 	output.Close()
 	if err != nil {
 		os.Remove(outputFile)
 		log.Fatalln(err)
-	}
-	if i < len(input) {
-		log.Fatalln("Short write")
 	}
 }
