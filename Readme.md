@@ -12,7 +12,7 @@ go install github.com/zaf/resample@latest
 The package warps an io.Reader in a Resampler that resamples and writes all
 input data. Input should be RAW PCM encoded audio samples.
 
-For usage details please see the code snippets in the cmd folder.
+For usage details please see the code snippet in the cmd folder.
 
 ## Usage
 

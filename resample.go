@@ -1,5 +1,5 @@
 /*
-	Copyright (C) 2016 - 2023, Lefteris Zafiris <zaf@fastmail.com>
+	Copyright (C) 2016 - 2024, Lefteris Zafiris <zaf@fastmail.com>
 
 	This program is free software, distributed under the terms of
 	the BSD 3-Clause License. See the LICENSE file
@@ -17,7 +17,7 @@ go install github.com/zaf/resample@latest
 The package warps an io.Reader in a Resampler that resamples and
 writes all input data. Input should be RAW PCM encoded audio samples.
 
-For usage details please see the code snippets in the cmd folder.
+For usage details please see the code snippet in the cmd folder.
 */
 package resample
 
