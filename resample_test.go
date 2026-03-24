@@ -35,6 +35,7 @@ var NewTest = []struct {
 	{writer: io.Discard, inputRate: 16000.0, outputRate: 8000.0, channels: 2, format: I16, quality: VeryHighQ, err: ""},
 	{writer: nil, inputRate: 8000.0, outputRate: 8000.0, channels: 2, format: I16, quality: MediumQ, err: "io.Writer is nil"},
 	{writer: io.Discard, inputRate: 16000.0, outputRate: 8000.0, channels: 0, format: I16, quality: MediumQ, err: "invalid channels number"},
+	{writer: io.Discard, inputRate: 16000.0, outputRate: 8000.0, channels: -1, format: I16, quality: MediumQ, err: "invalid channels number"},
 	{writer: io.Discard, inputRate: 16000.0, outputRate: 0.0, channels: 0, format: I16, quality: MediumQ, err: "invalid input or output sampling rates"},
 	{writer: io.Discard, inputRate: 0.0, outputRate: 8000.0, channels: 0, format: I16, quality: MediumQ, err: "invalid input or output sampling rates"},
 	{writer: io.Discard, inputRate: 16000.0, outputRate: 8000.0, channels: 2, format: 10, quality: MediumQ, err: "invalid format setting"},
@@ -77,7 +78,7 @@ var WriteTest = []struct {
 		{[]byte{0x01}, 0, "incomplete input frame data"},
 		{[]byte{0x01, 0x00}, 2, ""},
 		{[]byte{0x01, 0x00, 0x7c, 0x7f, 0xd1, 0xd0, 0xd3, 0xd2, 0xdd, 0xdc, 0xdf, 0xde, 0x01, 0x00, 0x7c, 0x7f, 0xd1, 0xd0, 0xd3, 0xd2, 0xdd, 0xdc, 0xdf, 0xde}, 24, ""},
-		{[]byte{0x01, 0x00, 0x7c, 0x7f, 0xd1, 0xd0, 0xd3, 0xd2, 0xdd, 0xdc, 0xdf, 0xde, 0x01, 0x00, 0x7c, 0x7f, 0xd1, 0xd0, 0xd3, 0xd2, 0xdd, 0xdc, 0xdf, 0xde, 0xd9}, 25, ""},
+		{[]byte{0x01, 0x00, 0x7c, 0x7f, 0xd1, 0xd0, 0xd3, 0xd2, 0xdd, 0xdc, 0xdf, 0xde, 0x01, 0x00, 0x7c, 0x7f, 0xd1, 0xd0, 0xd3, 0xd2, 0xdd, 0xdc, 0xdf, 0xde, 0xd9}, 24, ""},
 	}},
 
 	{"1-2 Resampler stereo", 8000.0, 16000.0, 2, []struct {
@@ -96,7 +97,7 @@ var WriteTest = []struct {
 	}{
 		{[]byte{}, 0, ""},
 		{[]byte{0x01}, 0, "incomplete input frame data"},
-		{[]byte{0x01, 0x00, 0x7c, 0x7f}, 0, "not enough input to generate output"},
+		{[]byte{0x01, 0x00, 0x7c, 0x7f}, 4, ""},
 	}},
 }
 

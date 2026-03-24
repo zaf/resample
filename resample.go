@@ -32,7 +32,6 @@ import (
 	"errors"
 	"io"
 	"runtime"
-	"unsafe"
 )
 
 const (
@@ -73,7 +72,6 @@ func init() {
 // sampling rates, the number of channels of the input data, the input format
 // and the quality setting.
 func New(writer io.Writer, inputRate, outputRate float64, channels, format, quality int) (*Resampler, error) {
-	var err error
 	var size int
 	if writer == nil {
 		return nil, errors.New("io.Writer is nil")
@@ -81,7 +79,7 @@ func New(writer io.Writer, inputRate, outputRate float64, channels, format, qual
 	if inputRate <= 0 || outputRate <= 0 {
 		return nil, errors.New("invalid input or output sampling rates")
 	}
-	if channels == 0 {
+	if channels <= 0 {
 		return nil, errors.New("invalid channels number")
 	}
 	if quality < 0 || quality > 6 {
@@ -105,12 +103,10 @@ func New(writer io.Writer, inputRate, outputRate float64, channels, format, qual
 	runtimeSpec := C.soxr_runtime_spec(C.uint(threads))
 	soxr = C.soxr_create(C.double(inputRate), C.double(outputRate), C.uint(channels), &soxErr, &ioSpec, &qSpec, &runtimeSpec)
 	if C.GoString(soxErr) != "" && C.GoString(soxErr) != "0" {
-		err = errors.New(C.GoString(soxErr))
-		C.free(unsafe.Pointer(soxErr))
-		return nil, err
+		return nil, errors.New(C.GoString(soxErr))
 	}
 
-	r := Resampler{
+	r := &Resampler{
 		resampler:   soxr,
 		inRate:      inputRate,
 		outRate:     outputRate,
@@ -118,13 +114,16 @@ func New(writer io.Writer, inputRate, outputRate float64, channels, format, qual
 		frameSize:   size,
 		destination: writer,
 	}
-	C.free(unsafe.Pointer(soxErr))
-	return &r, err
+	runtime.SetFinalizer(r, (*Resampler).Close)
+	return r, nil
 }
 
 // Reset permits reusing a Resampler rather than allocating a new one.
 func (r *Resampler) Reset(writer io.Writer) error {
 	var err error
+	if writer == nil {
+		return errors.New("io.Writer is nil")
+	}
 	if r.resampler == nil {
 		return errors.New("soxr resampler is nil")
 	}
@@ -145,6 +144,7 @@ func (r *Resampler) Close() error {
 	err = r.flush()
 	C.soxr_delete(r.resampler)
 	r.resampler = nil
+	runtime.SetFinalizer(r, nil)
 	return err
 }
 
@@ -165,29 +165,27 @@ func (r *Resampler) Write(p []byte) (int, error) {
 	if framesIn == 0 {
 		return i, errors.New("incomplete input frame data")
 	}
-	framesOut := int(float64(framesIn) * (r.outRate / r.inRate))
-	if framesOut == 0 {
-		return i, errors.New("not enough input to generate output")
-	}
+	framesOut := int(float64(framesIn)*(r.outRate/r.inRate)) + 2
 	dataIn := C.CBytes(p)
 	dataOut := C.malloc(C.size_t(framesOut * r.channels * r.frameSize))
 	var soxErr C.soxr_error_t
-	var read, done C.size_t = 0, 0
-	soxErr = C.soxr_process(r.resampler, C.soxr_in_t(dataIn), C.size_t(framesIn), &read, C.soxr_out_t(dataOut), C.size_t(framesOut), &done)
+	var done C.size_t = 0
+	soxErr = C.soxr_process(r.resampler, C.soxr_in_t(dataIn), C.size_t(framesIn), nil, C.soxr_out_t(dataOut), C.size_t(framesOut), &done)
 	if C.GoString(soxErr) != "" && C.GoString(soxErr) != "0" {
 		err = errors.New(C.GoString(soxErr))
 		goto cleanup
 	}
 	_, err = r.destination.Write(C.GoBytes(dataOut, C.int(int(done)*r.channels*r.frameSize)))
-	// In many cases the resampler will not return the full data unless we flush it. Espasially if the input chunck is small
-	// As long as we close the resampler (Close() flushes all data) we don't need to worry about short writes, unless r.destination.Write() fails
+	// In many cases the resampler will not return the full data unless we flush it. Especially if the input chunk is small.
+	// As long as we close the resampler (Close() flushes all data) we don't need to worry about short writes, unless r.destination.Write() fails.
 	if err == nil {
-		i = len(p)
+		// Report the frame-aligned bytes we passed to soxr, excluding any
+		// trailing bytes that didn't form a complete frame.
+		i = framesIn * r.channels * r.frameSize
 	}
 cleanup:
 	C.free(dataIn)
 	C.free(dataOut)
-	C.free(unsafe.Pointer(soxErr))
 	return i, err
 }
 
@@ -199,14 +197,21 @@ func (r *Resampler) flush() error {
 	framesOut := 4096 * 16
 	dataOut := C.malloc(C.size_t(framesOut * r.channels * r.frameSize))
 	// Flush any pending output by calling soxr_process with no input data.
-	soxErr = C.soxr_process(r.resampler, nil, 0, nil, C.soxr_out_t(dataOut), C.size_t(framesOut), &done)
-	if C.GoString(soxErr) != "" && C.GoString(soxErr) != "0" {
-		err = errors.New(C.GoString(soxErr))
-		goto cleanup
+	// Loop until soxr has no more pending output.
+	for {
+		soxErr = C.soxr_process(r.resampler, nil, 0, nil, C.soxr_out_t(dataOut), C.size_t(framesOut), &done)
+		if C.GoString(soxErr) != "" && C.GoString(soxErr) != "0" {
+			err = errors.New(C.GoString(soxErr))
+			break
+		}
+		if done == 0 {
+			break
+		}
+		_, err = r.destination.Write(C.GoBytes(dataOut, C.int(int(done)*r.channels*r.frameSize)))
+		if err != nil {
+			break
+		}
 	}
-	_, err = r.destination.Write(C.GoBytes(dataOut, C.int(int(done)*r.channels*r.frameSize)))
-cleanup:
 	C.free(dataOut)
-	C.free(unsafe.Pointer(soxErr))
 	return err
 }
