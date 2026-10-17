@@ -24,13 +24,13 @@ package resample
 /*
 // Link soxr using pkg-config.
 #cgo pkg-config: soxr
-#include <stdlib.h>
 #include <soxr.h>
 */
 import "C"
 import (
 	"errors"
 	"io"
+	"math"
 	"runtime"
 	"unsafe"
 )
@@ -50,6 +50,23 @@ const (
 	I16 = 3 // 16-bit signed linear PCM
 
 	byteLen = 8
+
+	// maxBufSize caps the output buffer used when draining the resampler.
+	maxBufSize = 256 << 20
+
+	// maxChannels caps the number of channels. soxr allocates a resampler per
+	// channel, so an unbounded value would allow trivially exhausting memory.
+	maxChannels = 256
+
+	// Sampling rate limits, in Hz.
+	minRate = 1.0
+	maxRate = 1.0e9
+
+	// maxRatio bounds the ratio between the input and the output rate.
+	// libsoxr does not cope with extreme ratios: it hangs when flushing
+	// resamplers with ratios around 2^20 and crashes on even larger ones,
+	// so reject them up front.
+	maxRatio = 1 << 16
 )
 
 // Resampler resamples PCM sound data.
@@ -59,6 +76,7 @@ type Resampler struct {
 	outRate     float64   // output sample rate
 	channels    int       // number of input channels
 	frameSize   int       // frame size in bytes
+	leftover    []byte    // bytes of an incomplete frame, kept for the next Write
 	destination io.Writer // output data
 }
 
@@ -73,15 +91,18 @@ func init() {
 // sampling rates, the number of channels of the input data, the input format
 // and the quality setting.
 func New(writer io.Writer, inputRate, outputRate float64, channels, format, quality int) (*Resampler, error) {
-	var err error
 	var size int
 	if writer == nil {
 		return nil, errors.New("io.Writer is nil")
 	}
-	if inputRate <= 0 || outputRate <= 0 {
+	// NaN rates fail every comparison, hence the negated form.
+	if !(inputRate >= minRate && inputRate <= maxRate) || !(outputRate >= minRate && outputRate <= maxRate) {
 		return nil, errors.New("invalid input or output sampling rates")
 	}
-	if channels == 0 {
+	if ratio := inputRate / outputRate; ratio > maxRatio || ratio < 1.0/maxRatio {
+		return nil, errors.New("invalid input or output sampling rates")
+	}
+	if channels <= 0 || channels > maxChannels {
 		return nil, errors.New("invalid channels number")
 	}
 	if quality < 0 || quality > 6 {
@@ -97,17 +118,14 @@ func New(writer io.Writer, inputRate, outputRate float64, channels, format, qual
 	default:
 		return nil, errors.New("invalid format setting")
 	}
-	var soxr C.soxr_t
 	var soxErr C.soxr_error_t
 	// Setup soxr and create a stream resampler
 	ioSpec := C.soxr_io_spec(C.soxr_datatype_t(format), C.soxr_datatype_t(format))
 	qSpec := C.soxr_quality_spec(C.ulong(quality), 0)
 	runtimeSpec := C.soxr_runtime_spec(C.uint(threads))
-	soxr = C.soxr_create(C.double(inputRate), C.double(outputRate), C.uint(channels), &soxErr, &ioSpec, &qSpec, &runtimeSpec)
-	if C.GoString(soxErr) != "" && C.GoString(soxErr) != "0" {
-		err = errors.New(C.GoString(soxErr))
-		C.free(unsafe.Pointer(soxErr))
-		return nil, err
+	soxr := C.soxr_create(C.double(inputRate), C.double(outputRate), C.uint(channels), &soxErr, &ioSpec, &qSpec, &runtimeSpec)
+	if soxErr != nil {
+		return nil, errors.New(C.GoString(soxErr))
 	}
 
 	r := Resampler{
@@ -118,8 +136,7 @@ func New(writer io.Writer, inputRate, outputRate float64, channels, format, qual
 		frameSize:   size,
 		destination: writer,
 	}
-	C.free(unsafe.Pointer(soxErr))
-	return &r, err
+	return &r, nil
 }
 
 // Reset permits reusing a Resampler rather than allocating a new one.
@@ -128,7 +145,11 @@ func (r *Resampler) Reset(writer io.Writer) error {
 	if r.resampler == nil {
 		return errors.New("soxr resampler is nil")
 	}
+	if writer == nil {
+		return errors.New("io.Writer is nil")
+	}
 	err = r.flush()
+	r.leftover = nil
 	r.destination = writer
 	C.soxr_clear(r.resampler)
 	return err
@@ -153,60 +174,96 @@ func (r *Resampler) Close() error {
 // from p (0 <= n <= len(p)) and any error encountered that caused
 // the write to stop early.
 func (r *Resampler) Write(p []byte) (int, error) {
-	var err error
-	var i int
 	if r.resampler == nil {
-		return i, errors.New("soxr resampler is nil")
+		return 0, errors.New("soxr resampler is nil")
 	}
 	if len(p) == 0 {
-		return i, nil
+		return 0, nil
 	}
-	framesIn := len(p) / r.frameSize / r.channels
+	// Join the bytes of an incomplete frame left over by the previous call, so
+	// that frames spanning two writes are neither split nor dropped.
+	n := len(p)
+	p = append(r.leftover, p...)
+	frameBytes := r.frameSize * r.channels
+	framesIn := len(p) / frameBytes
+	r.leftover = append([]byte(nil), p[framesIn*frameBytes:]...)
 	if framesIn == 0 {
-		return i, errors.New("incomplete input frame data")
+		return 0, errors.New("incomplete input frame data")
 	}
-	framesOut := int(float64(framesIn) * (r.outRate / r.inRate))
-	if framesOut == 0 {
-		return i, errors.New("not enough input to generate output")
+	// Output frames that fit in a buffer of maxBufSize bytes, and the input
+	// frames that generate them. Input is fed to the resampler in slices of at
+	// most maxIn frames, so that no single call needs an oversized output
+	// buffer, however big the write is.
+	ratio := r.outRate / r.inRate
+	maxOut := maxBufSize / frameBytes
+	maxIn := int(math.Min(float64(framesIn), float64(maxOut)/ratio))
+	if maxIn < 1 {
+		maxIn = 1
 	}
-	dataIn := C.CBytes(p)
-	dataOut := C.malloc(C.size_t(framesOut * r.channels * r.frameSize))
-	var soxErr C.soxr_error_t
-	var read, done C.size_t = 0, 0
-	soxErr = C.soxr_process(r.resampler, C.soxr_in_t(dataIn), C.size_t(framesIn), &read, C.soxr_out_t(dataOut), C.size_t(framesOut), &done)
-	if C.GoString(soxErr) != "" && C.GoString(soxErr) != "0" {
-		err = errors.New(C.GoString(soxErr))
-		goto cleanup
+	var dataOut []byte
+	for off := 0; off < framesIn; off += maxIn {
+		end := off + maxIn
+		if end > framesIn {
+			end = framesIn
+		}
+		// Ask for the expected number of output frames of this slice, but at
+		// least one, so that the resampler is fed and pending output drained
+		// even when downsampling small writes.
+		olen := int(math.Min(float64(end-off)*ratio, float64(maxOut)))
+		if olen < 1 {
+			olen = 1
+		}
+		if len(dataOut) < olen*frameBytes {
+			dataOut = make([]byte, olen*frameBytes)
+		}
+		var done C.size_t
+		soxErr := C.soxr_process(r.resampler,
+			C.soxr_in_t(unsafe.Pointer(&p[off*frameBytes])), C.size_t(end-off), nil,
+			C.soxr_out_t(unsafe.Pointer(&dataOut[0])), C.size_t(olen), &done)
+		if soxErr != nil {
+			return 0, errors.New(C.GoString(soxErr))
+		}
+		// In many cases the resampler will not return the full data unless we flush it. Especially if the input chunk is small
+		// As long as we close the resampler (Close() flushes all data) we don't need to worry about short writes, unless r.destination.Write() fails
+		if _, err := r.destination.Write(dataOut[:int(done)*frameBytes]); err != nil {
+			return 0, err
+		}
 	}
-	_, err = r.destination.Write(C.GoBytes(dataOut, C.int(int(done)*r.channels*r.frameSize)))
-	// In many cases the resampler will not return the full data unless we flush it. Espasially if the input chunck is small
-	// As long as we close the resampler (Close() flushes all data) we don't need to worry about short writes, unless r.destination.Write() fails
-	if err == nil {
-		i = len(p)
-	}
-cleanup:
-	C.free(dataIn)
-	C.free(dataOut)
-	C.free(unsafe.Pointer(soxErr))
-	return i, err
+	return n, nil
 }
 
-// flush any pending output from the resampler. Aftter that no more input can be passed.
+// flush any pending output from the resampler. After that no more input can be passed.
 func (r *Resampler) flush() error {
-	var err error
-	var done C.size_t
-	var soxErr C.soxr_error_t
-	framesOut := 4096 * 16
-	dataOut := C.malloc(C.size_t(framesOut * r.channels * r.frameSize))
-	// Flush any pending output by calling soxr_process with no input data.
-	soxErr = C.soxr_process(r.resampler, nil, 0, nil, C.soxr_out_t(dataOut), C.size_t(framesOut), &done)
-	if C.GoString(soxErr) != "" && C.GoString(soxErr) != "0" {
-		err = errors.New(C.GoString(soxErr))
-		goto cleanup
+	frameBytes := r.frameSize * r.channels
+	maxFrames := maxBufSize / frameBytes
+	// Start with a small buffer and grow it only while there is more output
+	// pending, so that flush works for any channel count without ever
+	// needing an oversized buffer.
+	frames := 4096
+	if frames > maxFrames {
+		frames = maxFrames
 	}
-	_, err = r.destination.Write(C.GoBytes(dataOut, C.int(int(done)*r.channels*r.frameSize)))
-cleanup:
-	C.free(dataOut)
-	C.free(unsafe.Pointer(soxErr))
-	return err
+	for {
+		dataOut := make([]byte, frames*frameBytes)
+		var done C.size_t
+		// Flush any pending output by calling soxr_process with no input data.
+		soxErr := C.soxr_process(r.resampler, nil, 0, nil, C.soxr_out_t(unsafe.Pointer(&dataOut[0])), C.size_t(frames), &done)
+		if soxErr != nil {
+			return errors.New(C.GoString(soxErr))
+		}
+		_, err := r.destination.Write(dataOut[:int(done)*frameBytes])
+		if err != nil {
+			return err
+		}
+		// Fewer frames than requested means the resampler is drained.
+		if done < C.size_t(frames) {
+			return nil
+		}
+		if frames < maxFrames {
+			frames *= 4
+			if frames > maxFrames {
+				frames = maxFrames
+			}
+		}
+	}
 }

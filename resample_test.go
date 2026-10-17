@@ -11,6 +11,7 @@ package resample
 import (
 	"bytes"
 	"io"
+	"math"
 	"os"
 	"testing"
 )
@@ -35,8 +36,19 @@ var NewTest = []struct {
 	{writer: io.Discard, inputRate: 16000.0, outputRate: 8000.0, channels: 2, format: I16, quality: VeryHighQ, err: ""},
 	{writer: nil, inputRate: 8000.0, outputRate: 8000.0, channels: 2, format: I16, quality: MediumQ, err: "io.Writer is nil"},
 	{writer: io.Discard, inputRate: 16000.0, outputRate: 8000.0, channels: 0, format: I16, quality: MediumQ, err: "invalid channels number"},
+	{writer: io.Discard, inputRate: 16000.0, outputRate: 8000.0, channels: -1, format: I16, quality: MediumQ, err: "invalid channels number"},
+	{writer: io.Discard, inputRate: 16000.0, outputRate: 8000.0, channels: 1000, format: I16, quality: MediumQ, err: "invalid channels number"},
 	{writer: io.Discard, inputRate: 16000.0, outputRate: 0.0, channels: 0, format: I16, quality: MediumQ, err: "invalid input or output sampling rates"},
 	{writer: io.Discard, inputRate: 0.0, outputRate: 8000.0, channels: 0, format: I16, quality: MediumQ, err: "invalid input or output sampling rates"},
+	{writer: io.Discard, inputRate: math.NaN(), outputRate: 8000.0, channels: 2, format: I16, quality: MediumQ, err: "invalid input or output sampling rates"},
+	{writer: io.Discard, inputRate: 8000.0, outputRate: math.NaN(), channels: 2, format: I16, quality: MediumQ, err: "invalid input or output sampling rates"},
+	{writer: io.Discard, inputRate: math.Inf(1), outputRate: 8000.0, channels: 2, format: I16, quality: MediumQ, err: "invalid input or output sampling rates"},
+	{writer: io.Discard, inputRate: 8000.0, outputRate: math.Inf(-1), channels: 2, format: I16, quality: MediumQ, err: "invalid input or output sampling rates"},
+	{writer: io.Discard, inputRate: 1e-300, outputRate: 8000.0, channels: 2, format: I16, quality: MediumQ, err: "invalid input or output sampling rates"},
+	{writer: io.Discard, inputRate: 1e300, outputRate: 8000.0, channels: 2, format: I16, quality: MediumQ, err: "invalid input or output sampling rates"},
+	{writer: io.Discard, inputRate: 1.0, outputRate: 1e300, channels: 2, format: I16, quality: MediumQ, err: "invalid input or output sampling rates"},
+	{writer: io.Discard, inputRate: 1.0, outputRate: 67108864.0, channels: 2, format: I16, quality: MediumQ, err: "invalid input or output sampling rates"},
+	{writer: io.Discard, inputRate: 67108864.0, outputRate: 1.0, channels: 2, format: I16, quality: MediumQ, err: "invalid input or output sampling rates"},
 	{writer: io.Discard, inputRate: 16000.0, outputRate: 8000.0, channels: 2, format: 10, quality: MediumQ, err: "invalid format setting"},
 	{writer: io.Discard, inputRate: 16000.0, outputRate: 8000.0, channels: 2, format: I16, quality: 10, err: "invalid quality setting"},
 	{writer: io.Discard, inputRate: 16000.0, outputRate: 8000.0, channels: 2, format: I16, quality: -10, err: "invalid quality setting"},
@@ -96,7 +108,16 @@ var WriteTest = []struct {
 	}{
 		{[]byte{}, 0, ""},
 		{[]byte{0x01}, 0, "incomplete input frame data"},
-		{[]byte{0x01, 0x00, 0x7c, 0x7f}, 0, "not enough input to generate output"},
+		{[]byte{0x01, 0x00, 0x7c, 0x7f}, 4, ""},
+	}},
+
+	{"65536-1 Resampler mono", 1.0, 65536.0, 1, []struct {
+		data     []byte
+		expected int
+		err      string
+	}{
+		{[]byte{}, 0, ""},
+		{[]byte{0x01, 0x00, 0x7c, 0x7f}, 4, ""},
 	}},
 }
 
@@ -167,6 +188,42 @@ func TestFile(t *testing.T) {
 	}
 }
 
+func TestWriteChunked(t *testing.T) {
+	// 2000 frames of 32bit float PCM, written in chunks that are not a
+	// multiple of the frame size, must give exactly the same output as a
+	// single write of the same data.
+	data := make([]byte, 2000*8)
+	for i := 0; i < len(data); i += 4 {
+		data[i+2], data[i+3] = 0x80, 0x3f // float32(1.0), little endian
+	}
+	var single, chunked bytes.Buffer
+	for _, tc := range []struct {
+		out  io.Writer
+		size int
+	}{{&single, len(data)}, {&chunked, 1001}} {
+		res, err := New(tc.out, 44100.0, 16000.0, 2, F32, MediumQ)
+		if err != nil {
+			t.Fatal("Failed to create a Resampler:", err)
+		}
+		for off := 0; off < len(data); off += tc.size {
+			end := off + tc.size
+			if end > len(data) {
+				end = len(data)
+			}
+			if _, err := res.Write(data[off:end]); err != nil {
+				t.Fatalf("Write failed: %s", err)
+			}
+		}
+		if err := res.Close(); err != nil {
+			t.Fatal("Failed to close Resampler:", err)
+		}
+	}
+	if !bytes.Equal(single.Bytes(), chunked.Bytes()) {
+		t.Errorf("Chunked write mismatch, single: %d bytes, chunked: %d bytes",
+			single.Len(), chunked.Len())
+	}
+}
+
 func TestClose(t *testing.T) {
 	res, err := New(io.Discard, 16000.0, 8000.0, 1, I16, MediumQ)
 	if err != nil {
@@ -175,6 +232,16 @@ func TestClose(t *testing.T) {
 	err = res.Close()
 	if err != nil {
 		t.Fatal("Failed to Close the Resampler:", err)
+	}
+	// A channel count that needs a flush buffer bigger than the buffer cap
+	// must still close cleanly.
+	res, err = New(io.Discard, 48000.0, 44100.0, 256, F64, MediumQ)
+	if err != nil {
+		t.Fatal("Failed to create a Resampler:", err)
+	}
+	err = res.Close()
+	if err != nil {
+		t.Fatal("Failed to Close a 256 channel F64 Resampler:", err)
 	}
 	_, err = res.Write(WriteTest[0].testData[3].data)
 	if err == nil {
@@ -194,6 +261,10 @@ func TestReset(t *testing.T) {
 	err = res.Reset(io.Discard)
 	if err != nil {
 		t.Fatal("Failed to Reset the Resampler:", err)
+	}
+	err = res.Reset(nil)
+	if err == nil {
+		t.Fatal("Running Reset with a nil writer didn't return an error.")
 	}
 	err = res.Close()
 	if err != nil {
