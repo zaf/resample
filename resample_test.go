@@ -300,8 +300,7 @@ func TestClose(t *testing.T) {
 	if err != nil {
 		t.Fatal("Failed to Close the Resampler:", err)
 	}
-	// A channel count that needs a flush buffer bigger than the buffer cap
-	// must still close cleanly.
+	// The maximum channel count with the largest frame size must still close cleanly
 	res, err = New(io.Discard, 48000.0, 44100.0, 256, F64, MediumQ)
 	if err != nil {
 		t.Fatal("Failed to create a Resampler:", err)
@@ -404,7 +403,7 @@ var BenchData = []struct {
 	format   int
 	quality  int
 }{
-	{"16bit 2 ch 44,1->16 Medium", "testing/piano-44.1k-16-2.wav", 44100.0, 16000.0, 2, I16, MediumQ},
+	{"16bit 2 ch 44.1->16 Medium", "testing/piano-44.1k-16-2.wav", 44100.0, 16000.0, 2, I16, MediumQ},
 	{"16bit 2 ch 16->8    Medium", "testing/piano-16k-16-2.wav", 16000.0, 8000.0, 2, I16, MediumQ},
 	{"32fl  2 ch 44.1->8  Medium", "testing/piano-44.1k-32f-2.wav", 44100.0, 8000.0, 2, F32, MediumQ},
 	{"16bit 2 ch 44.1->48 Medium", "testing/piano-44.1k-16-2.wav", 44100.0, 48000.0, 2, I16, MediumQ},

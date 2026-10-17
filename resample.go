@@ -52,7 +52,7 @@ const (
 
 	byteLen = 8
 
-	// maxBufSize caps the output buffer used when draining the resampler.
+	// maxBufSize caps the output buffer used when resampling and draining.
 	maxBufSize = 256 << 20
 
 	// maxChannels caps the number of channels. soxr allocates a resampler per
@@ -160,9 +160,8 @@ func (r *Resampler) Reset(writer io.Writer) error {
 	return err
 }
 
-// Close flushes, clean-ups and frees memory. Should always be called when
-// finished using the resampler. Should always be called when finished using
-// the resampler, and before we can use its output.
+// Close flushes, cleans up and frees memory.Should always be called
+// when finished using the resampler, and before we can use its output.
 func (r *Resampler) Close() error {
 	if r.resampler == nil {
 		return errors.New("soxr resampler is nil")
@@ -179,12 +178,8 @@ func (r *Resampler) Close() error {
 // the write to stop early.
 //
 // Input may be written in chunks of any size: bytes of an incomplete
-// frame are retained and joined with the next call. A call that holds
-// only part of a frame returns an error after buffering the bytes;
-// they are completed by the next call and must not be written again.
-// For any other error, some resampled data may already have reached
-// the destination: the Resampler should then be Closed instead of
-// reused, and the same input must not be written again.
+// frame are retained and joined with the next call.
+// When all input has been written, Close must be called to flush any remaining output.
 func (r *Resampler) Write(p []byte) (int, error) {
 	if r.resampler == nil {
 		return 0, errors.New("soxr resampler is nil")
@@ -260,8 +255,9 @@ func (r *Resampler) processFrames(p []byte) error {
 		if soxErr != nil {
 			return errors.New(C.GoString(soxErr))
 		}
-		// In many cases the resampler will not return the full data unless we flush it. Especially if the input chunk is small
-		// As long as we close the resampler (Close() flushes all data) we don't need to worry about short writes, unless r.destination.Write() fails
+		// In many cases the resampler will not return the full data unless we flush it,
+		// especially if the input chunk is small. As long as we close the resampler
+		// (Close() flushes all data) we don't need to worry about short writes, unless r.destination.Write() fails
 		if _, err := r.destination.Write(dataOut[:int(done)*frameBytes]); err != nil {
 			return err
 		}
