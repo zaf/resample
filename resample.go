@@ -134,7 +134,7 @@ func New(writer io.Writer, inputRate, outputRate float64, channels, format, qual
 		return nil, errors.New(C.GoString(soxErr))
 	}
 
-	r := Resampler{
+	r := &Resampler{
 		resampler:   soxr,
 		inRate:      inputRate,
 		outRate:     outputRate,
@@ -142,7 +142,7 @@ func New(writer io.Writer, inputRate, outputRate float64, channels, format, qual
 		frameSize:   size,
 		destination: writer,
 	}
-	return &r, nil
+	return r, nil
 }
 
 // Reset permits reusing a Resampler rather than allocating a new one.
