@@ -14,8 +14,9 @@ To install make sure you have libsoxr and pkg-config installed, then run:
 
 go install github.com/zaf/resample@latest
 
-The package warps an io.Reader in a Resampler that resamples and
-writes all input data. Input should be RAW PCM encoded audio samples.
+The package wraps an io.Writer in a Resampler: data written to the
+Resampler is resampled and written to the wrapped Writer.
+Input should be RAW PCM encoded audio samples.
 
 For usage details please see the code snippet in the cmd folder.
 */
@@ -67,6 +68,11 @@ const (
 	// resamplers with ratios around 2^20 and crashes on even larger ones,
 	// so reject them up front.
 	maxRatio = 1 << 16
+
+	// maxDrainPasses caps how many times flush() may receive a completely
+	// full maximum-size output buffer before giving up, so that a
+	// resampler that never drains cannot hang Close forever.
+	maxDrainPasses = 64
 )
 
 // Resampler resamples PCM sound data.
@@ -141,14 +147,13 @@ func New(writer io.Writer, inputRate, outputRate float64, channels, format, qual
 
 // Reset permits reusing a Resampler rather than allocating a new one.
 func (r *Resampler) Reset(writer io.Writer) error {
-	var err error
 	if r.resampler == nil {
 		return errors.New("soxr resampler is nil")
 	}
 	if writer == nil {
 		return errors.New("io.Writer is nil")
 	}
-	err = r.flush()
+	err := r.flush()
 	r.leftover = nil
 	r.destination = writer
 	C.soxr_clear(r.resampler)
@@ -159,11 +164,10 @@ func (r *Resampler) Reset(writer io.Writer) error {
 // finished using the resampler. Should always be called when finished using
 // the resampler, and before we can use its output.
 func (r *Resampler) Close() error {
-	var err error
 	if r.resampler == nil {
 		return errors.New("soxr resampler is nil")
 	}
-	err = r.flush()
+	err := r.flush()
 	C.soxr_delete(r.resampler)
 	r.resampler = nil
 	return err
@@ -173,22 +177,55 @@ func (r *Resampler) Close() error {
 // the underlying data stream, returns the number of bytes written
 // from p (0 <= n <= len(p)) and any error encountered that caused
 // the write to stop early.
+//
+// Input may be written in chunks of any size: bytes of an incomplete
+// frame are retained and joined with the next call. A call that holds
+// only part of a frame returns an error after buffering the bytes;
+// they are completed by the next call and must not be written again.
+// For any other error, some resampled data may already have reached
+// the destination: the Resampler should then be Closed instead of
+// reused, and the same input must not be written again.
 func (r *Resampler) Write(p []byte) (int, error) {
 	if r.resampler == nil {
 		return 0, errors.New("soxr resampler is nil")
 	}
-	if len(p) == 0 {
+	n := len(p)
+	if n == 0 {
 		return 0, nil
 	}
-	// Join the bytes of an incomplete frame left over by the previous call, so
-	// that frames spanning two writes are neither split nor dropped.
-	n := len(p)
-	p = append(r.leftover, p...)
+	frameBytes := r.frameSize * r.channels
+	// Bytes of p needed to complete the frame left over by the previous
+	// call, or a whole frame when there is nothing left over.
+	need := frameBytes - len(r.leftover)
+	if n < need {
+		// Not even a whole frame; keep the bytes for the next call.
+		r.leftover = append(r.leftover, p...)
+		return 0, errors.New("partial frame buffered, send more data or Close to discard")
+	}
+	// Complete the leftover frame with the head of p and feed it to the
+	// resampler on its own, so that the rest of p is processed in place,
+	// without copying it.
+	if len(r.leftover) > 0 {
+		head := append(r.leftover, p[:need]...)
+		p = p[need:]
+		if err := r.processFrames(head); err != nil {
+			return 0, err
+		}
+	}
+	if err := r.processFrames(p); err != nil {
+		return 0, err
+	}
+	return n, nil
+}
+
+// processFrames resamples the whole frames of p and writes the output to
+// the destination. A trailing partial frame is kept for the next call.
+func (r *Resampler) processFrames(p []byte) error {
 	frameBytes := r.frameSize * r.channels
 	framesIn := len(p) / frameBytes
 	r.leftover = append([]byte(nil), p[framesIn*frameBytes:]...)
 	if framesIn == 0 {
-		return 0, errors.New("incomplete input frame data")
+		return nil
 	}
 	// Output frames that fit in a buffer of maxBufSize bytes, and the input
 	// frames that generate them. Input is fed to the resampler in slices of at
@@ -221,15 +258,15 @@ func (r *Resampler) Write(p []byte) (int, error) {
 			C.soxr_in_t(unsafe.Pointer(&p[off*frameBytes])), C.size_t(end-off), nil,
 			C.soxr_out_t(unsafe.Pointer(&dataOut[0])), C.size_t(olen), &done)
 		if soxErr != nil {
-			return 0, errors.New(C.GoString(soxErr))
+			return errors.New(C.GoString(soxErr))
 		}
 		// In many cases the resampler will not return the full data unless we flush it. Especially if the input chunk is small
 		// As long as we close the resampler (Close() flushes all data) we don't need to worry about short writes, unless r.destination.Write() fails
 		if _, err := r.destination.Write(dataOut[:int(done)*frameBytes]); err != nil {
-			return 0, err
+			return err
 		}
 	}
-	return n, nil
+	return nil
 }
 
 // flush any pending output from the resampler. After that no more input can be passed.
@@ -243,6 +280,7 @@ func (r *Resampler) flush() error {
 	if frames > maxFrames {
 		frames = maxFrames
 	}
+	full := 0
 	for {
 		dataOut := make([]byte, frames*frameBytes)
 		var done C.size_t
@@ -264,6 +302,14 @@ func (r *Resampler) flush() error {
 			if frames > maxFrames {
 				frames = maxFrames
 			}
+			continue
+		}
+		// The buffer is already as large as it can get and it came back
+		// full again. A healthy resampler drains eventually; give up
+		// after many full passes instead of spinning forever.
+		full++
+		if full > maxDrainPasses {
+			return errors.New("resampler failed to drain")
 		}
 	}
 }
