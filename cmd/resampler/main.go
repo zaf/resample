@@ -9,7 +9,7 @@
 // The program takes as input a WAV or RAW PCM sound file
 // and resamples it to the desired sampling rate.
 // The output is RAW PCM data.
-// Usage: goresample [flags] input_file output_file
+// Usage: resampler [flags] input_file output_file
 //
 // Example: go run main.go -ir 16000 -or 8000 ../../testing/piano-16k-16-2.wav 8k.raw
 
@@ -82,17 +82,25 @@ func main() {
 	}
 	// Skip WAV file header in order to pass only the PCM data to the Resampler
 	if strings.ToLower(filepath.Ext(inputFile)) == ".wav" {
-		input.Seek(wavHeader, 0)
+		if _, err := input.Seek(wavHeader, 0); err != nil {
+			output.Close()
+			os.Remove(outputFile)
+			log.Fatalln("Failed to skip WAV header:", err)
+		}
 	}
 
 	// Read input and pass it to the Resampler in chunks
 	_, err = io.Copy(res, input)
-	// Close the Resampler and the output file. Clsoing the Resampler will flush any remaining data to the output file.
+	// Close the Resampler and the output file. Closing the Resampler will flush any remaining data to the output file.
 	// If the Resampler is not closed before the output file, any remaining data will be lost.
-	res.Close()
+	closeErr := res.Close()
 	output.Close()
 	if err != nil {
 		os.Remove(outputFile)
 		log.Fatalln(err)
+	}
+	if closeErr != nil {
+		os.Remove(outputFile)
+		log.Fatalln("Failed to flush resampler:", closeErr)
 	}
 }

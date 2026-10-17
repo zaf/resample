@@ -9,8 +9,9 @@ To install make sure you have libsoxr and pkg-config installed, then run:
 
 go install github.com/zaf/resample@latest
 
-The package warps an io.Reader in a Resampler that resamples and writes all
-input data. Input should be RAW PCM encoded audio samples.
+The package wraps an io.Writer in a Resampler: data written to the
+Resampler is resampled and written to the wrapped Writer.
+Input should be RAW PCM encoded audio samples.
 
 For usage details please see the code snippet in the cmd folder.
 
@@ -55,7 +56,7 @@ the number of channels of the input data, the input format and the quality setti
 #### func (*Resampler) Close
 
 ```go
-func (r *Resampler) Close() (error)
+func (r *Resampler) Close() error
 ```
 Close flushes, clean-ups and frees memory. Should always be called when finished using
 the resampler, and before we can use its output.
@@ -63,7 +64,7 @@ the resampler, and before we can use its output.
 #### func (*Resampler) Reset
 
 ```go
-func (r *Resampler) Reset(writer io.Writer) (error)
+func (r *Resampler) Reset(writer io.Writer) error
 ```
 Reset permits reusing a Resampler rather than allocating a new one.
 
@@ -72,6 +73,11 @@ Reset permits reusing a Resampler rather than allocating a new one.
 ```go
 func (r *Resampler) Write(p []byte) (int, error)
 ```
-Write resamples PCM sound data. Writes len(p) bytes from p to the underlying
-data stream, returns the number of bytes written from p (0 <= n <= len(p)) and
-any error encountered that caused the write to stop early.
+Write resamples PCM sound data. Writes len(p) bytes from p to
+the underlying data stream, returns the number of bytes written
+from p (0 <= n <= len(p)) and any error encountered that caused
+the write to stop early.
+
+Input may be written in chunks of any size: bytes of an incomplete
+frame are retained and joined with the next call.
+When all input has been written, Close must be called to flush any remaining output.
